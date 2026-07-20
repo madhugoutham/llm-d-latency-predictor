@@ -1,0 +1,21 @@
+---
+description: Kubernetes manifest and container image conventions
+globs:
+  - "deploy/**"
+  - "Dockerfile*"
+alwaysApply: false
+---
+
+- Port conventions: training server 8000, prediction server 8001. Services:
+  `training-service:8000` (ClusterIP), `prediction-service:80 -> 8001`.
+- Training server: single replica, models on a ReadWriteOnce PVC. Prediction
+  servers: horizontally scaled, per-pod `emptyDir` model cache — models move
+  over HTTP only; never introduce a ReadWriteMany dependency.
+- Every container needs `livenessProbe` on `/healthz` and `readinessProbe` on
+  `/readyz`; the prediction server's readiness allows a generous
+  `failureThreshold` because it must first download models.
+- Config flows through ConfigMaps mapped to the env vars defined in
+  `PredictSettings`/`Settings` — keep names identical to the code.
+- This repo also ships as EPP sidecars upstream (gateway-api-inference-extension
+  Helm chart); keep images topology-agnostic (no assumptions about Service DNS
+  beyond `TRAINING_SERVER_URL`).

@@ -1,0 +1,17 @@
+---
+description: Core project identity and where to find full context
+alwaysApply: true
+---
+
+This repo is **llm-d-latency-predictor**: TTFT/TPOT latency prediction for
+SLO-aware LLM inference routing. Flow: User -> Envoy (ext_proc) -> EPP
+(flow control -> scheduler plugins incl. predicted-latency-producer /
+latency-scorer) -> this repo's prediction server (:8001) helps choose a
+vLLM pod -> response streams back -> observed latencies feed the training
+server (:8000), which retrains and republishes models over HTTP.
+
+- Ground truth for architecture, plugin catalog, flow control, batch inference,
+  and config: `docs/architecture.md`. Repo conventions and invariants: `AGENTS.md`.
+- For deep repo Q&A delegate to the `repo-guide` subagent; bug analysis ->
+  `bug-hunter`; hot-path performance -> `perf-optimizer`; diff review -> `pr-reviewer`.
+- NEVER commit, push, open PRs, or file issues without explicit user permission.

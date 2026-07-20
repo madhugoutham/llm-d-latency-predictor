@@ -1,0 +1,27 @@
+---
+description: Hot-path performance rules for prediction and training code
+globs:
+  - "src/**"
+alwaysApply: false
+---
+
+`/predict/bulk/strict` sits on the EPP scheduling critical path: the EPP's Go
+coalescing proxy batches concurrent per-pod prediction calls (~1ms window) into
+one bulk request, and each prediction replica must sustain ~300 QPS.
+
+- Keep the `predict_batch_fast` fast path fast: `np.fromiter` column extraction,
+  dict-of-numpy-arrays DataFrame construction (never per-row list-of-dicts on
+  the hot path), no per-request Pydantic `.dict()` conversion, no re-validation
+  after ingest.
+- Responses on bulk endpoints use `ORJSONResponse` with plain dicts — do not
+  reintroduce per-item Pydantic model construction there.
+- Lock discipline: snapshot model references under the lock; run DataFrame
+  construction and model inference outside it. `load_models()` deserializes
+  outside the lock and swaps pointers inside it.
+- Ensemble batches are split by queue regime with numpy index arrays and
+  predicted per-regime in one shot — preserve this instead of per-row dispatch.
+- Model reloads are checksum-guarded; avoid adding per-request filesystem or
+  network calls.
+- When claiming a performance win, state the measurement method (e.g.
+  `tests/test_dual_server_client.py` load client, or `python -m timeit` on the
+  feature-prep path) and the before/after numbers.

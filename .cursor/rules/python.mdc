@@ -1,0 +1,22 @@
+---
+description: Python conventions for the latency predictor servers
+globs:
+  - "**/*.py"
+alwaysApply: false
+---
+
+- Python 3.11+: use `StrEnum`, `X | None` unions, `datetime.now(UTC)`.
+- Lint/format with ruff (`make lint`, `make fmt`); line length 120; rules E, W, F, I, UP.
+- Pydantic v1-style API is intentionally in use (`.dict()`, `min_items`) — stay
+  consistent; do not half-migrate to v2 idioms.
+- Optional deps (xgboost, lightgbm, orjson) are guarded by try/except import
+  with graceful fallback — preserve this pattern for any new optional dependency.
+- Threading pattern: daemon threads with `threading.Event` shutdown signaling;
+  snapshot shared state under the lock, do heavy work (joblib load, DataFrame
+  build, inference) OUTSIDE the lock; hold locks only for pointer swaps.
+- Feature engineering is duplicated in `training_server.py` and
+  `prediction_server.py` (`_prepare_features_with_interaction`,
+  `_prepare_features_for_ensemble`). Any change must be applied to BOTH files
+  identically, keeping column names and order in sync.
+- New config knobs = env vars with defaults in `PredictSettings`/`Settings`;
+  document them in `docs/architecture.md`.

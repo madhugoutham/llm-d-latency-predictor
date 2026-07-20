@@ -1,0 +1,26 @@
+---
+description: Code review checklist for changes in this repo; use when reviewing diffs or PRs
+alwaysApply: false
+---
+
+Review checklist for llm-d-latency-predictor changes:
+
+1. **Feature parity**: if feature engineering changed, is the change applied
+   identically in `training_server.py` AND `prediction_server.py` (columns,
+   order, dtypes, categorical categories)?
+2. **API compatibility**: do `/predict/bulk/strict`, `/add_training_data_bulk`,
+   or `/model/{name}/*` schemas change? These are consumed by the upstream EPP
+   (`predicted-latency-producer`) — flag any breaking change loudly.
+3. **Model artifact compatibility**: joblib file names, paths, or the
+   `QueueGatedModel` attribute shape changed? That breaks the sync protocol
+   between old/new server versions during rollout.
+4. **Concurrency**: new shared state guarded by the existing locks? Any heavy
+   work moved inside a lock? Shutdown still clean (Event set, thread join)?
+5. **Hot path**: any per-request allocations, validation, logging, or I/O added
+   to `/predict/bulk/strict` / `predict_batch_fast`?
+6. **Config**: new env vars have defaults, appear in both the Settings class
+   and `docs/architecture.md`, and (if deploy-relevant) in the ConfigMaps?
+7. **Tests**: bulk + single prediction paths and both ensemble regimes
+   (queued/noqueue) exercised? `make lint` clean?
+8. **Process**: commits signed off (DCO). Never approve/merge on the user's
+   behalf; draft review comments for the user to post.
