@@ -7,7 +7,14 @@
 
 ## Overview
 
-<!-- TODO: Describe what this project does, why it exists, and how it fits into the llm-d ecosystem -->
+`llm-d-latency-predictor` provides continuous, online latency prediction for LLM inference scheduling. It predicts **TTFT** (time to first token) and **TPOT** (time per output token) for a request on each candidate vLLM pod, given the pod's live state (KV-cache utilization, queue depth, prefix-cache match score) and the request's features.
+
+The predictions power **latency-based and SLO-aware routing** in the [Gateway API Inference Extension](https://gateway-api-inference-extension.sigs.k8s.io/guides/latency-based-predictor/) / [llm-d](https://llm-d.ai/blog/predicted-latency-based-scheduling-for-llms): the Endpoint Picker (EPP) calls the prediction server for every candidate pod at scheduling time, routes the request to the pod with the best predicted outcome (or best SLO headroom), and feeds the observed latencies back to the training server after the response — so the models continuously learn from live traffic with no offline training step.
+
+The project ships two FastAPI services:
+
+- **Training server** — ingests observed latency samples, retrains XGBoost/LightGBM/Bayesian-Ridge quantile models on a stratified sliding window, and publishes model files over HTTP.
+- **Prediction server** — syncs the latest models and serves bulk TTFT/TPOT predictions on the EPP's scheduling hot path.
 
 ## Prerequisites
 
@@ -76,11 +83,23 @@ uvicorn llm_d_latency_predictor.training_server:app --port 8000
 
 ## Architecture
 
-<!-- TODO: Add architecture overview, diagrams, or links to design docs -->
+See **[docs/architecture.md](docs/architecture.md)** for the full end-to-end architecture: the request flow from the user through Envoy, the EPP's flow-control layer and scheduler plugin pipeline, the latency predictor, and the vLLM pods; the continuous training feedback loop; batch inference internals; the llm-d/EPP plugin catalog; and deployment topologies.
+
+At a glance:
+
+```text
+User -> Envoy (ext_proc) -> EPP [flow control -> predicted-latency-producer -> latency-scorer -> picker]
+                                      |                                  ^
+                                      v                                  |
+                        Prediction server :8001  <-- model sync --  Training server :8000
+                                                                          ^
+User <- Envoy <- chosen vLLM pod (continuous batching)                    |
+                     `----- observed TTFT/TPOT samples ------------------'
+```
 
 ## Configuration
 
-<!-- TODO: Document configuration options, environment variables, CLI flags -->
+Both servers are configured entirely through environment variables (model type, quantile, retraining cadence, sync interval, ensemble mode, etc.). The complete reference lives in [docs/architecture.md](docs/architecture.md#configuration-reference).
 
 ## Contributing
 
