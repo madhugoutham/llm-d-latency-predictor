@@ -1,0 +1,4003 @@
+{
+ "version": "1.0.0",
+ "project": {
+  "name": "llm-d-latency-predictor",
+  "languages": [
+   "python",
+   "yaml",
+   "markdown",
+   "toml",
+   "shell",
+   "makefile"
+  ],
+  "frameworks": [
+   "FastAPI",
+   "Pydantic",
+   "Uvicorn",
+   "pytest",
+   "Docker",
+   "GitHub Actions"
+  ],
+  "description": "Latency prediction service (TTFT/TPOT) for LLM inference scheduling in the llm-d / Gateway API Inference Extension ecosystem: a training server retrains quantile models from observed latencies and a prediction server serves bulk predictions on the EPP scheduling hot path.",
+  "analyzedAt": "2026-07-20T00:13:18.864779+00:00",
+  "gitCommitHash": "aaafe878cb1f99a9dc90bb6f3bd6525b7b1db432"
+ },
+ "nodes": [
+  {
+   "id": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "file",
+   "name": "prediction_server.py",
+   "summary": "FastAPI inference server that periodically downloads trained TTFT/TPOT regression models (XGBoost, LightGBM, or Bayesian Ridge; quantile or mean objective) from the training server over HTTP and serves single and bulk latency predictions. Contains the ModelSyncer background sync thread and the LightweightPredictor inference engine with optional queue-gated ensemble routing.",
+   "tags": [
+    "fastapi",
+    "inference",
+    "prediction",
+    "model-sync",
+    "ttft",
+    "tpot",
+    "quantile-regression"
+   ],
+   "complexity": "complex",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    1,
+    1205
+   ]
+  },
+  {
+   "id": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "file",
+   "name": "training_server.py",
+   "summary": "FastAPI training server that ingests latency training samples into 3D-bucketed deques (queue x cache x prefix), continuously retrains TTFT/TPOT models (single plus optional queue-gated ensemble) in a background thread, and exposes model download, Prometheus metrics, flush, and debug endpoints. The LatencyPredictor class holds all training, prediction, and data-management logic.",
+   "tags": [
+    "fastapi",
+    "training",
+    "continuous-learning",
+    "xgboost",
+    "lightgbm",
+    "bayesian-ridge",
+    "prometheus",
+    "model-serving"
+   ],
+   "complexity": "complex",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1,
+    2365
+   ]
+  },
+  {
+   "id": "file:src/llm_d_latency_predictor/__init__.py",
+   "type": "file",
+   "name": "__init__.py",
+   "summary": "Package initializer for llm_d_latency_predictor; declares the package docstring and __version__ = 0.0.1.",
+   "tags": [
+    "package",
+    "version"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/__init__.py",
+   "lineRange": [
+    1,
+    3
+   ]
+  },
+  {
+   "id": "file:tests/__init__.py",
+   "type": "file",
+   "name": "tests/__init__.py",
+   "summary": "Empty package marker that makes the tests directory an importable Python package.",
+   "tags": [
+    "package",
+    "tests"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/__init__.py",
+   "lineRange": [
+    1,
+    1
+   ]
+  },
+  {
+   "id": "file:tests/test_dual_server_client.py",
+   "type": "file",
+   "name": "test_dual_server_client.py",
+   "summary": "Integration test client that exercises both live servers over HTTP (URLs from PREDICTION_SERVER_URL/TRAINING_SERVER_URL env vars): health/readiness, training data ingestion, model sync, single/bulk predictions, pod_type and token-in-flight features, ensemble routing, flush API, and statistical checks that quantile models learn synthetic latency distributions. Also runnable as a standalone script with a test-suite summary.",
+   "tags": [
+    "pytest",
+    "integration-test",
+    "dual-server",
+    "http-client",
+    "e2e"
+   ],
+   "complexity": "complex",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    1,
+    2099
+   ]
+  },
+  {
+   "id": "service:Dockerfile-prediction",
+   "type": "service",
+   "name": "prediction-service image",
+   "summary": "Docker image (python:3.14-slim + libgomp1) that installs the package and runs the prediction server via uvicorn on port 8001 with a configurable number of workers (UVICORN_WORKERS, default 8).",
+   "tags": [
+    "docker",
+    "deployment",
+    "uvicorn",
+    "prediction",
+    "port-8001"
+   ],
+   "complexity": "simple",
+   "filePath": "Dockerfile-prediction",
+   "lineRange": [
+    1,
+    23
+   ]
+  },
+  {
+   "id": "service:Dockerfile-training",
+   "type": "service",
+   "name": "training-service image",
+   "summary": "Docker image (python:3.14-slim + libgomp1) that installs the package and runs the training server via uvicorn as a single process on port 8000.",
+   "tags": [
+    "docker",
+    "deployment",
+    "uvicorn",
+    "training",
+    "port-8000"
+   ],
+   "complexity": "simple",
+   "filePath": "Dockerfile-training",
+   "lineRange": [
+    1,
+    20
+   ]
+  },
+  {
+   "id": "service:Dockerfile-test",
+   "type": "service",
+   "name": "test-runner image",
+   "summary": "Docker image that installs runtime plus test dependencies (pytest, httpx, aiohttp, requests) and runs the dual-server integration test suite (tests/test_dual_server_client.py) against externally provided server URLs.",
+   "tags": [
+    "docker",
+    "testing",
+    "pytest",
+    "ci"
+   ],
+   "complexity": "simple",
+   "filePath": "Dockerfile-test",
+   "lineRange": [
+    1,
+    29
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/prediction_server.py:PredictSettings",
+   "type": "class",
+   "name": "PredictSettings",
+   "summary": "Environment-variable driven configuration for the prediction server: training server URL, local model/scaler/gated-model paths, sync interval, model type, quantile alpha, objective type, host/port, HTTP timeouts, and ensemble/token-in-flight feature flags.",
+   "tags": [
+    "configuration",
+    "environment-variables",
+    "settings"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    73,
+    102
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/prediction_server.py:QueueGatedModel",
+   "type": "class",
+   "name": "QueueGatedModel (prediction)",
+   "summary": "Joblib-serializable wrapper holding noqueue and queued sub-models plus their optional scalers; at prediction time the caller inspects num_request_waiting to select the appropriate sub-model. Must be structurally identical to the training server's copy so joblib can deserialize downloaded gated models.",
+   "tags": [
+    "ensemble",
+    "gated-model",
+    "joblib",
+    "serialization"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    105,
+    116
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/prediction_server.py:ModelSyncer",
+   "type": "class",
+   "name": "ModelSyncer",
+   "summary": "Background component that periodically downloads model files from the training server over HTTP with retries, atomic temp-file replacement, size/joblib validation, and a daemon sync-loop thread that also triggers in-memory reloads on every worker.",
+   "tags": [
+    "model-sync",
+    "http-download",
+    "background-thread",
+    "atomic-write"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    149,
+    311
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+   "type": "class",
+   "name": "LightweightPredictor",
+   "summary": "Inference engine that loads TTFT/TPOT models (and gated ensemble wrappers) from disk with checksum-based reload skipping, prepares engineered features, and serves single, batch, and fast-path batch predictions with lock-minimizing model snapshots. Supports XGBoost/LightGBM quantile predictions and Bayesian Ridge mean+std with quantile adjustment via norm.ppf.",
+   "tags": [
+    "inference",
+    "feature-engineering",
+    "thread-safety",
+    "ensemble",
+    "quantile-regression"
+   ],
+   "complexity": "complex",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    314,
+    875
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/prediction_server.py:PredictionRequest",
+   "type": "class",
+   "name": "PredictionRequest (prediction)",
+   "summary": "Pydantic request model for a single prediction: kv_cache_percentage, input_token_length, num_request_waiting/running, num_tokens_generated, prefix_cache_score, optional pod_type, and prefill/decode_tokens_in_flight (default 0) with ge/le validation.",
+   "tags": [
+    "pydantic",
+    "request-model",
+    "validation",
+    "api-schema"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    895,
+    904
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/prediction_server.py:PredictionResponse",
+   "type": "class",
+   "name": "PredictionResponse / StatusResponse (prediction)",
+   "summary": "Pydantic response models: PredictionResponse carries ttft_ms/tpot_ms plus model_type, objective_type, quantile, and last_model_load metadata; StatusResponse reports readiness, model file existence, training server URL, and ensemble_active.",
+   "tags": [
+    "pydantic",
+    "response-model",
+    "api-schema"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    907,
+    925
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/prediction_server.py:BulkPredictionRequest",
+   "type": "class",
+   "name": "BulkPredictionRequest",
+   "summary": "Pydantic model wrapping a list of 1 to 10,000 PredictionRequest objects for the bulk prediction endpoints.",
+   "tags": [
+    "pydantic",
+    "request-model",
+    "bulk",
+    "api-schema"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    928,
+    929
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/prediction_server.py:BulkPredictionResponseWithErrors",
+   "type": "class",
+   "name": "Bulk prediction response models",
+   "summary": "Pydantic response models for bulk prediction: BulkPredictionResponse (all-success shape), BulkPredictionError (per-index error with the offending request), and BulkPredictionResponseWithErrors (nullable predictions list plus errors, used by /predict/bulk).",
+   "tags": [
+    "pydantic",
+    "response-model",
+    "bulk",
+    "error-handling"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    932,
+    952
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:_download_model_if_newer",
+   "type": "function",
+   "name": "ModelSyncer._download_model_if_newer",
+   "summary": "Compares the training server's /model/{name}/info last_modified timestamp against the local file mtime and, if newer, streams /model/{name}/download to a unique temp file, validates Content-Length and joblib-loadability, then atomically replaces the destination. Returns True only when a new file was written.",
+   "tags": [
+    "http-download",
+    "atomic-write",
+    "validation",
+    "model-sync"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    172,
+    256
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:sync_models",
+   "type": "function",
+   "name": "ModelSyncer.sync_models",
+   "summary": "Under a sync lock, downloads all relevant model files (ttft/tpot, scalers for Bayesian Ridge, gated models when ensemble mode is on) via _download_model_if_newer; returns True if any file was updated.",
+   "tags": [
+    "model-sync",
+    "locking",
+    "orchestration"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    258,
+    279
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:_sync_loop",
+   "type": "function",
+   "name": "ModelSyncer._sync_loop",
+   "summary": "Daemon-thread loop that every MODEL_SYNC_INTERVAL_SEC calls sync_models() and then unconditionally calls predictor.load_models(), so workers that lost the multi-worker download race still refresh their in-memory model (load_models has a cheap checksum early-return).",
+   "tags": [
+    "background-thread",
+    "polling",
+    "multi-worker",
+    "model-sync"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    281,
+    298
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_with_interaction",
+   "type": "function",
+   "name": "LightweightPredictor._prepare_features_with_interaction",
+   "summary": "Engineers the model feature frame to exactly match the training server: pod_type categorical encoding, is_queued binary flag, optional token-in-flight columns, and for TTFT the effective_input_tokens interaction term and categorical prefill_score_bucket; returns columns in the exact training order.",
+   "tags": [
+    "feature-engineering",
+    "pandas",
+    "categorical",
+    "duplicated-logic"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    355,
+    398
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_for_ensemble",
+   "type": "function",
+   "name": "LightweightPredictor._prepare_features_for_ensemble",
+   "summary": "Wraps _prepare_features_with_interaction for gated ensemble sub-models, dropping the is_queued and num_request_waiting columns when the queue regime is 'noqueue'.",
+   "tags": [
+    "feature-engineering",
+    "ensemble",
+    "duplicated-logic"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    400,
+    413
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:load_models",
+   "type": "function",
+   "name": "LightweightPredictor.load_models",
+   "summary": "Loads TTFT/TPOT models (plus scalers and gated ensemble wrappers when applicable) from local disk, skipping the reload when MD5 checksums are unchanged; heavy joblib.load happens outside the lock, which is held only for the pointer swap.",
+   "tags": [
+    "model-loading",
+    "checksum",
+    "joblib",
+    "thread-safety"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    415,
+    502
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:_predict_with_models",
+   "type": "function",
+   "name": "LightweightPredictor._predict_with_models",
+   "summary": "Core inference given prepared TTFT/TPOT feature frames and explicit models/scalers: for Bayesian Ridge it one-hot encodes pod_type, scales, and applies mean + norm.ppf(quantile)*std adjustment; for XGBoost/LightGBM it predicts the quantile directly.",
+   "tags": [
+    "inference",
+    "bayesian-ridge",
+    "quantile-adjustment",
+    "scaling"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    504,
+    541
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:predict",
+   "type": "function",
+   "name": "LightweightPredictor.predict",
+   "summary": "Single-request prediction: validates required features, snapshots either the gated sub-models (routing by num_request_waiting == 0 to noqueue vs queued) or the single models under the lock, builds one-row DataFrames, and returns (ttft, tpot) predictions.",
+   "tags": [
+    "inference",
+    "ensemble-routing",
+    "validation",
+    "single-prediction"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    543,
+    632
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch",
+   "type": "function",
+   "name": "LightweightPredictor.predict_batch",
+   "summary": "Batch prediction from a list of feature dicts: validates each request, and when the ensemble is active splits indices into noqueue/queued groups, predicts each group with its gated sub-models, and scatters results back into positional order.",
+   "tags": [
+    "inference",
+    "batch",
+    "ensemble-routing",
+    "validation"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    634,
+    750
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch_fast",
+   "type": "function",
+   "name": "LightweightPredictor.predict_batch_fast",
+   "summary": "Optimized bulk prediction path operating directly on Pydantic PredictionRequest objects: extracts feature columns with np.fromiter, builds DataFrames from dict-of-numpy-arrays (~5x faster than list-of-dicts), skips re-validation, and handles ensemble routing via np.where index arrays.",
+   "tags": [
+    "inference",
+    "performance",
+    "numpy",
+    "bulk",
+    "fast-path"
+   ],
+   "complexity": "complex",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    752,
+    875
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/status",
+   "type": "endpoint",
+   "name": "GET /status (prediction)",
+   "summary": "Returns a StatusResponse with predictor readiness, model type, objective, quantile, last model load time, training server URL, on-disk model file existence, and whether the gated ensemble is active.",
+   "tags": [
+    "http-get",
+    "status",
+    "monitoring"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    960,
+    989
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict",
+   "type": "endpoint",
+   "name": "POST /predict (prediction)",
+   "summary": "Single-prediction endpoint: validates the PredictionRequest via Pydantic, calls predictor.predict(), clips negatives to zero, and returns a PredictionResponse with model metadata.",
+   "tags": [
+    "http-post",
+    "prediction",
+    "api"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    992,
+    1009
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict/bulk/strict",
+   "type": "endpoint",
+   "name": "POST /predict/bulk/strict",
+   "summary": "High-throughput bulk endpoint: relies on Pydantic ingest validation only, calls predict_batch_fast, clips negatives via numpy, builds plain-dict responses (avoiding per-item Pydantic construction), and serializes with ORJSONResponse. Any single invalid request fails the whole batch at validation.",
+   "tags": [
+    "http-post",
+    "bulk",
+    "performance",
+    "orjson",
+    "strict"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    1012,
+    1062
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict/bulk",
+   "type": "endpoint",
+   "name": "POST /predict/bulk",
+   "summary": "Error-tolerant bulk endpoint: per-request feature validation collects BulkPredictionError entries, valid requests go through predictor.predict_batch, and the response pairs a nullable predictions list with the errors list plus success/failure counts.",
+   "tags": [
+    "http-post",
+    "bulk",
+    "error-handling",
+    "partial-success"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    1065,
+    1132
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/reload",
+   "type": "endpoint",
+   "name": "POST /reload",
+   "summary": "Manually triggers a model sync from the training server followed by an in-memory reload, returning synced/loaded flags plus readiness and model metadata; used by tests and operators to force refresh outside the periodic sync loop.",
+   "tags": [
+    "http-post",
+    "model-sync",
+    "admin"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    1135,
+    1151
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/healthz",
+   "type": "endpoint",
+   "name": "GET /healthz (prediction)",
+   "summary": "Liveness probe returning {status: ok, service: http-based-latency-predictor} unconditionally.",
+   "tags": [
+    "http-get",
+    "health-check",
+    "kubernetes-probe"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    1154,
+    1156
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/readyz",
+   "type": "endpoint",
+   "name": "GET /readyz (prediction)",
+   "summary": "Readiness probe returning 503 until predictor.is_ready (all required model files loaded); on success returns model type, objective, and quantile.",
+   "tags": [
+    "http-get",
+    "readiness-probe",
+    "kubernetes-probe"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    1159,
+    1168
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/",
+   "type": "endpoint",
+   "name": "GET / (prediction)",
+   "summary": "Root info endpoint (excluded from the OpenAPI schema) returning a running banner with model type, objective, quantile, readiness, sync interval, and the configured training server URL.",
+   "tags": [
+    "http-get",
+    "info",
+    "root"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/prediction_server.py",
+   "lineRange": [
+    1171,
+    1181
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/training_server.py:RandomDropDeque",
+   "type": "class",
+   "name": "RandomDropDeque",
+   "summary": "A deque subclass that, when full, evicts a uniformly random element (via rotate/popleft) instead of the oldest one on append/appendleft, giving reservoir-like retention of training samples. Defined but the buckets currently use plain bounded deques.",
+   "tags": [
+    "data-structure",
+    "deque",
+    "random-eviction",
+    "sampling"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    63,
+    88
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/training_server.py:Settings",
+   "type": "class",
+   "name": "Settings (training)",
+   "summary": "Environment-variable driven configuration for the training server: model/scaler/gated paths under /tmp/models, retraining interval and min-sample thresholds, per-bucket size, test/train ratio, model type, quantile alpha, objective, ensemble mode, TPOT zero-token flag, and token-in-flight feature toggle.",
+   "tags": [
+    "configuration",
+    "environment-variables",
+    "settings"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    92,
+    123
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/training_server.py:QueueGatedModel",
+   "type": "class",
+   "name": "QueueGatedModel (training)",
+   "summary": "Joblib-serializable wrapper bundling noqueue and queued sub-models plus optional scalers, produced by ensemble training and saved as a single gated model file per target (ttft_gated/tpot_gated); mirrored byte-for-byte in the prediction server so downloads deserialize cleanly.",
+   "tags": [
+    "ensemble",
+    "gated-model",
+    "joblib",
+    "serialization"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    126,
+    137
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "type": "class",
+   "name": "LatencyPredictor",
+   "summary": "Central training-server class managing 3D-bucketed training data (5 queue x 20 cache x 4 prefix buckets), test-data deques, metric score histories, model training (single and queue-gated ensemble), prediction, model persistence, flushing, and Prometheus metrics rendering, all guarded by a threading lock.",
+   "tags": [
+    "training",
+    "data-buckets",
+    "ensemble",
+    "metrics",
+    "thread-safety",
+    "model-management"
+   ],
+   "complexity": "complex",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    240,
+    1759
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/training_server.py:TrainingEntry",
+   "type": "class",
+   "name": "TrainingEntry",
+   "summary": "Pydantic model for one training sample: request features (kv cache, token counts, queue depths, prefix_cache_score, pod_type, token-in-flight) plus observed actual_ttft_ms and actual_tpot_ms labels and an auto-generated timestamp.",
+   "tags": [
+    "pydantic",
+    "training-data",
+    "api-schema",
+    "validation"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1772,
+    1784
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/training_server.py:PredictionRequest",
+   "type": "class",
+   "name": "PredictionRequest (training)",
+   "summary": "Pydantic request model for the training server's /predict endpoint: same feature set as the prediction server's request but without token-in-flight fields (those are defaulted server-side in predict()).",
+   "tags": [
+    "pydantic",
+    "request-model",
+    "api-schema"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1787,
+    1794
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/training_server.py:PredictionResponse",
+   "type": "class",
+   "name": "PredictionResponse (training)",
+   "summary": "Pydantic response model for training-server predictions, richer than the prediction server's: includes ttft/tpot uncertainty estimates and 2-sigma prediction bounds alongside the point predictions and model metadata.",
+   "tags": [
+    "pydantic",
+    "response-model",
+    "uncertainty",
+    "api-schema"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1797,
+    1811
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/training_server.py:BulkTrainingRequest",
+   "type": "class",
+   "name": "BulkTrainingRequest",
+   "summary": "Pydantic wrapper carrying a list of TrainingEntry objects for the /add_training_data_bulk ingestion endpoint.",
+   "tags": [
+    "pydantic",
+    "bulk",
+    "training-data",
+    "api-schema"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1814,
+    1815
+   ]
+  },
+  {
+   "id": "class:src/llm_d_latency_predictor/training_server.py:FlushRequest",
+   "type": "class",
+   "name": "FlushRequest / FlushResponse / ModelInfoResponse",
+   "summary": "Minor Pydantic models grouped together: FlushRequest selects which stores to clear (training data, test data, metrics) with an optional reason; FlushResponse reports per-store flushed counts; ModelInfoResponse describes model/server training state.",
+   "tags": [
+    "pydantic",
+    "flush",
+    "admin",
+    "api-schema"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    145,
+    178
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:quantile_loss",
+   "type": "function",
+   "name": "quantile_loss",
+   "summary": "Computes mean pinball (quantile) loss: tau-weighted absolute error asymmetric around the predicted quantile, used to evaluate trained quantile models on held-out test data.",
+   "tags": [
+    "metrics",
+    "pinball-loss",
+    "quantile",
+    "evaluation"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    181,
+    199
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:quantile_coverage",
+   "type": "function",
+   "name": "quantile_coverage",
+   "summary": "Returns the percentage of actual values falling at or below the predicted quantile; a well-calibrated p90 model should score close to 90%.",
+   "tags": [
+    "metrics",
+    "calibration",
+    "coverage",
+    "evaluation"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    202,
+    218
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:quantile_violation_rate",
+   "type": "function",
+   "name": "quantile_violation_rate",
+   "summary": "Returns the percentage of actual values exceeding the predicted quantile; for a well-calibrated p90 model this should be near 10%.",
+   "tags": [
+    "metrics",
+    "calibration",
+    "violation-rate",
+    "evaluation"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    221,
+    237
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:continuous_training_loop",
+   "type": "function",
+   "name": "continuous_training_loop",
+   "summary": "Daemon-thread loop started at server startup that sleeps 10s, then repeatedly calls predictor.train() every RETRAINING_INTERVAL_SEC until the predictor's shutdown event is set.",
+   "tags": [
+    "background-thread",
+    "retraining",
+    "continuous-learning"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1819,
+    1829
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:_get_prefix_bucket",
+   "type": "function",
+   "name": "LatencyPredictor._get_prefix_bucket",
+   "summary": "Maps a prefix cache score (clamped to [0,1]) to one of 4 prefix bucket indices (0-25%, 25-50%, 50-75%, 75-100%).",
+   "tags": [
+    "bucketing",
+    "prefix-cache",
+    "data-partitioning"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    324,
+    327
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:_get_queue_bucket",
+   "type": "function",
+   "name": "LatencyPredictor._get_queue_bucket",
+   "summary": "Maps num_request_waiting to one of 5 queue buckets (0, 1-2, 3-5, 6-10, 11+); bucket 0 also defines the noqueue regime used by the ensemble split.",
+   "tags": [
+    "bucketing",
+    "queue-depth",
+    "data-partitioning"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    329,
+    340
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:_get_cache_bucket",
+   "type": "function",
+   "name": "LatencyPredictor._get_cache_bucket",
+   "summary": "Maps kv_cache_percentage (clamped to [0,1]) to one of 20 cache buckets in 5% increments.",
+   "tags": [
+    "bucketing",
+    "kv-cache",
+    "data-partitioning"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    342,
+    345
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:_split_samples_by_queue",
+   "type": "function",
+   "name": "LatencyPredictor._split_samples_by_queue",
+   "summary": "Partitions all bucketed samples into noqueue (queue_bucket == 0) and queued (queue_bucket >= 1) lists, providing the training data split for the two gated ensemble sub-models.",
+   "tags": [
+    "ensemble",
+    "data-split",
+    "queue-regime"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    355,
+    368
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_for_ensemble",
+   "type": "function",
+   "name": "LatencyPredictor._prepare_features_for_ensemble",
+   "summary": "Wraps _prepare_features_with_interaction for ensemble sub-model training, dropping is_queued and num_request_waiting columns for the noqueue regime; identical logic to the prediction server's copy.",
+   "tags": [
+    "feature-engineering",
+    "ensemble",
+    "duplicated-logic"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    370,
+    383
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_with_interaction",
+   "type": "function",
+   "name": "LatencyPredictor._prepare_features_with_interaction",
+   "summary": "Canonical feature engineering for training: pod_type categorical encoding, is_queued flag, optional token-in-flight columns, and for TTFT the effective_input_tokens interaction ((1 - prefix_score) * input_length) and categorical prefill_score_bucket; the prediction server duplicates this to keep inference features consistent.",
+   "tags": [
+    "feature-engineering",
+    "pandas",
+    "interaction-terms",
+    "duplicated-logic"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    416,
+    477
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:_train_model_with_scaling",
+   "type": "function",
+   "name": "LatencyPredictor._train_model_with_scaling",
+   "summary": "Trains one model on prepared features after NaN/inf validation: Bayesian Ridge with StandardScaler and one-hot pod_type, XGBoost with strict feature-order enforcement and quantile (reg:quantileerror) or squared-error objective, or LightGBM with quantile/regression objective and categorical prefill_score_bucket. Supports sample weights and a drop_queue_features flag for noqueue ensemble sub-models.",
+   "tags": [
+    "training",
+    "xgboost",
+    "lightgbm",
+    "bayesian-ridge",
+    "hyperparameters",
+    "quantile-regression"
+   ],
+   "complexity": "complex",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    505,
+    715
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:_calculate_metrics_on_test",
+   "type": "function",
+   "name": "LatencyPredictor._calculate_metrics_on_test",
+   "summary": "Evaluates a freshly trained model on held-out test data: prepares features, applies scaling and quantile adjustment for Bayesian Ridge, and returns (quantile_loss, coverage, violation_rate) for the quantile objective or (MAE, RMSE, None) for the mean objective.",
+   "tags": [
+    "evaluation",
+    "test-data",
+    "metrics",
+    "calibration"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    717,
+    804
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:train",
+   "type": "function",
+   "name": "LatencyPredictor.train",
+   "summary": "Full retraining pass: snapshots bucketed samples under the lock, trains TTFT and TPOT models (with optional prefix-bucket sample weighting), evaluates on test data and records metric histories, then optionally trains four queue-gated ensemble sub-models when each regime has enough samples, swaps everything in under the lock, and persists via _save_models_unlocked.",
+   "tags": [
+    "training",
+    "retraining",
+    "ensemble",
+    "orchestration",
+    "sample-weighting"
+   ],
+   "complexity": "complex",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    846,
+    1132
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:predict",
+   "type": "function",
+   "name": "LatencyPredictor.predict",
+   "summary": "Training-server-side prediction returning (ttft, tpot, ttft_std, tpot_std): validates features, defaults token-in-flight fields, prepares feature frames, and predicts with Bayesian Ridge (mean+std with quantile adjustment) or XGBoost/LightGBM (direct quantile with a 10%-of-prediction uncertainty heuristic). Entire body runs under the lock.",
+   "tags": [
+    "inference",
+    "uncertainty",
+    "quantile-regression",
+    "validation"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1134,
+    1240
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:add_training_sample",
+   "type": "function",
+   "name": "LatencyPredictor.add_training_sample",
+   "summary": "Validates a single sample's required numeric fields, deterministically assigns it to train or test via a hash-based split honoring TEST_TRAIN_RATIO, and appends it to the appropriate (queue, cache, prefix) bucket or test deque per target validity (actual_ttft_ms/actual_tpot_ms > 0).",
+   "tags": [
+    "ingestion",
+    "train-test-split",
+    "bucketing",
+    "validation"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1242,
+    1284
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:add_training_samples",
+   "type": "function",
+   "name": "LatencyPredictor.add_training_samples",
+   "summary": "Bulk ingestion helper that takes the lock once and feeds each sample through add_training_sample, logging and continuing past individual failures.",
+   "tags": [
+    "ingestion",
+    "bulk",
+    "locking"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1286,
+    1295
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:_save_models_unlocked",
+   "type": "function",
+   "name": "LatencyPredictor._save_models_unlocked",
+   "summary": "Persists all current models to disk with joblib (caller must hold the lock): TTFT/TPOT models plus model-specific exports (XGBoost JSON tree dumps, LightGBM text models and feature-importance JSON), Bayesian Ridge scalers, and the two gated ensemble wrapper files when the ensemble is active.",
+   "tags": [
+    "persistence",
+    "joblib",
+    "model-export",
+    "xgboost",
+    "lightgbm"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1298,
+    1412
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:flush_training_data",
+   "type": "function",
+   "name": "LatencyPredictor.flush_training_data",
+   "summary": "Under the lock, selectively clears training buckets, test deques, and/or all metric score histories, returning per-store counts of flushed samples for the /flush endpoint's response.",
+   "tags": [
+    "admin",
+    "flush",
+    "data-management",
+    "locking"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1414,
+    1485
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:load_models",
+   "type": "function",
+   "name": "LatencyPredictor.load_models",
+   "summary": "At startup, loads existing model/scaler files from disk, or trains and saves single-point default stub models (target 10.0 ms) when files are missing \u2014 in which case MIN_SAMPLES_FOR_RETRAIN is lowered to the fresh threshold so real training kicks in quickly; raises if models still are not ready.",
+   "tags": [
+    "model-loading",
+    "bootstrap",
+    "default-model",
+    "startup"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1487,
+    1520
+   ]
+  },
+  {
+   "id": "function:src/llm_d_latency_predictor/training_server.py:get_metrics",
+   "type": "function",
+   "name": "LatencyPredictor.get_metrics",
+   "summary": "Renders the Prometheus text exposition served by /metrics: model/objective/ensemble gauges, per-feature coefficients (Bayesian Ridge, descaled) or tree importances, per-(queue,cache,prefix) bucket sample counts with per-dimension summaries, prefix-score distribution stats, and the last 5 quantile-loss/coverage/violation (or MAE/RMSE) scores per target.",
+   "tags": [
+    "prometheus",
+    "metrics",
+    "observability",
+    "feature-importance"
+   ],
+   "complexity": "complex",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1522,
+    1759
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/add_training_data_bulk",
+   "type": "endpoint",
+   "name": "POST /add_training_data_bulk",
+   "summary": "Accepts a BulkTrainingRequest of TrainingEntry objects, converts them to dicts, and hands them to predictor.add_training_samples; returns 202 Accepted with the count of ingested samples.",
+   "tags": [
+    "http-post",
+    "ingestion",
+    "training-data",
+    "bulk"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1849,
+    1860
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/predict",
+   "type": "endpoint",
+   "name": "POST /predict (training)",
+   "summary": "Prediction endpoint on the training server itself: calls predictor.predict() and returns a PredictionResponse enriched with uncertainty estimates and 2-sigma prediction bounds.",
+   "tags": [
+    "http-post",
+    "prediction",
+    "uncertainty",
+    "api"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1863,
+    1887
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/healthz",
+   "type": "endpoint",
+   "name": "GET /healthz (training)",
+   "summary": "Liveness probe returning {status: ok} unconditionally.",
+   "tags": [
+    "http-get",
+    "health-check",
+    "kubernetes-probe"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1890,
+    1892
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/readyz",
+   "type": "endpoint",
+   "name": "GET /readyz (training)",
+   "summary": "Readiness probe returning 503 until predictor.is_ready (models and, for Bayesian Ridge, scalers are loaded or bootstrapped).",
+   "tags": [
+    "http-get",
+    "readiness-probe",
+    "kubernetes-probe"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1895,
+    1899
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/metrics",
+   "type": "endpoint",
+   "name": "GET /metrics",
+   "summary": "Serves the Prometheus text exposition generated by predictor.get_metrics() (model info, coefficients/importances, bucket counts, and quantile calibration scores) with media type text/plain; version=0.0.4.",
+   "tags": [
+    "http-get",
+    "prometheus",
+    "observability"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1902,
+    1910
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/",
+   "type": "endpoint",
+   "name": "GET / (training)",
+   "summary": "Root info endpoint (excluded from the OpenAPI schema) returning a running banner with model type, objective type, quantile, and a human-readable description of the prediction target.",
+   "tags": [
+    "http-get",
+    "info",
+    "root"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1913,
+    1925
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/flush",
+   "type": "endpoint",
+   "name": "POST /flush",
+   "summary": "Admin endpoint that clears training data, test data, and/or metric histories via predictor.flush_training_data based on a FlushRequest (defaults flush everything), returning a FlushResponse with per-store flushed counts and a summary message.",
+   "tags": [
+    "http-post",
+    "admin",
+    "flush",
+    "data-management"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1928,
+    1989
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/data/status",
+   "type": "endpoint",
+   "name": "GET /data/status",
+   "summary": "Reports current training/test sample counts, ensemble regime split counts (noqueue vs queued per target), metric-score counts, non-empty bucket distribution, model readiness, and last retrain time \u2014 used for monitoring and flush decisions.",
+   "tags": [
+    "http-get",
+    "monitoring",
+    "data-status",
+    "ensemble"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    1992,
+    2038
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/download/info",
+   "type": "endpoint",
+   "name": "GET /model/download/info",
+   "summary": "Describes which model-export endpoints are available for the active model type (coefficients via /metrics for Bayesian Ridge, XGBoost tree JSON routes, or LightGBM text/importance routes), plus model readiness and quantile evaluation-metric descriptions.",
+   "tags": [
+    "http-get",
+    "discovery",
+    "model-export",
+    "info"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2041,
+    2084
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/ttft/xgb/json",
+   "type": "endpoint",
+   "name": "GET /model/ttft/xgb/json",
+   "summary": "Dumps the in-memory TTFT XGBoost booster as a JSON array of tree structures; 404 when the active model type is not XGBoost or the model is not trained.",
+   "tags": [
+    "http-get",
+    "xgboost",
+    "model-export",
+    "trees"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2087,
+    2107
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/tpot/xgb/json",
+   "type": "endpoint",
+   "name": "GET /model/tpot/xgb/json",
+   "summary": "Dumps the in-memory TPOT XGBoost booster as a JSON array of tree structures; 404 when the active model type is not XGBoost or the model is not trained.",
+   "tags": [
+    "http-get",
+    "xgboost",
+    "model-export",
+    "trees"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2110,
+    2128
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/info",
+   "type": "endpoint",
+   "name": "GET /model/{model_name}/info",
+   "summary": "Returns file metadata (path, size_bytes, last_modified ISO timestamp) for a named model artifact (ttft, tpot, scalers, or gated models); the prediction server's ModelSyncer polls this to decide whether to download a newer file.",
+   "tags": [
+    "http-get",
+    "model-metadata",
+    "sync-protocol"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2131,
+    2163
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/download",
+   "type": "endpoint",
+   "name": "GET /model/{model_name}/download",
+   "summary": "Streams a named model artifact's joblib file as an application/octet-stream FileResponse; this is the download half of the model-sync protocol consumed by the prediction server.",
+   "tags": [
+    "http-get",
+    "file-download",
+    "sync-protocol",
+    "joblib"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2166,
+    2188
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/models/list",
+   "type": "endpoint",
+   "name": "GET /models/list",
+   "summary": "Lists all six model artifacts (ttft, tpot, scalers, gated models) with existence, size, and last-modified data, plus model type, quantile, server time, and evaluation metric targets.",
+   "tags": [
+    "http-get",
+    "model-inventory",
+    "monitoring"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2191,
+    2225
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/ttft/lgb/txt",
+   "type": "endpoint",
+   "name": "GET /model/ttft/lgb/txt",
+   "summary": "Downloads the TTFT LightGBM model in native text format (saved during _save_models_unlocked); 404 unless the active model type is LightGBM and the file exists.",
+   "tags": [
+    "http-get",
+    "lightgbm",
+    "model-export"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2229,
+    2244
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/tpot/lgb/txt",
+   "type": "endpoint",
+   "name": "GET /model/tpot/lgb/txt",
+   "summary": "Downloads the TPOT LightGBM model in native text format; 404 unless the active model type is LightGBM and the file exists.",
+   "tags": [
+    "http-get",
+    "lightgbm",
+    "model-export"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2247,
+    2262
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/ttft/lgb/importances",
+   "type": "endpoint",
+   "name": "GET /model/ttft/lgb/importances",
+   "summary": "Returns the TTFT LightGBM feature-importance JSON written at save time; 404 unless the active model type is LightGBM and the file exists.",
+   "tags": [
+    "http-get",
+    "lightgbm",
+    "feature-importance"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2265,
+    2283
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/tpot/lgb/importances",
+   "type": "endpoint",
+   "name": "GET /model/tpot/lgb/importances",
+   "summary": "Returns the TPOT LightGBM feature-importance JSON written at save time; 404 unless the active model type is LightGBM and the file exists.",
+   "tags": [
+    "http-get",
+    "lightgbm",
+    "feature-importance"
+   ],
+   "complexity": "simple",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2286,
+    2304
+   ]
+  },
+  {
+   "id": "endpoint:src/llm_d_latency_predictor/training_server.py:/debug/prefix_distribution",
+   "type": "endpoint",
+   "name": "GET /debug/prefix_distribution",
+   "summary": "Debug endpoint that analyzes the relationship between prefix_cache_score and actual TTFT across all bucketed samples: per-quartile counts and TTFT stats, overall correlation, and interpretation hints for verifying the model can learn the prefix-cache effect.",
+   "tags": [
+    "http-get",
+    "debug",
+    "prefix-cache",
+    "data-analysis"
+   ],
+   "complexity": "moderate",
+   "filePath": "src/llm_d_latency_predictor/training_server.py",
+   "lineRange": [
+    2307,
+    2360
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_prediction_server_status",
+   "type": "function",
+   "name": "test_prediction_server_status",
+   "summary": "Verifies the prediction server's /status endpoint returns readiness, a known model_type and objective_type, a valid quantile, model file existence flags, and the ensemble_active field.",
+   "tags": [
+    "pytest",
+    "status",
+    "prediction-server"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    79,
+    100
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_training_server_models_list",
+   "type": "function",
+   "name": "test_training_server_models_list",
+   "summary": "Checks that /models/list on the training server enumerates ttft/tpot models (plus scalers for Bayesian Ridge) and always includes the ttft_gated/tpot_gated ensemble entries.",
+   "tags": [
+    "pytest",
+    "model-inventory",
+    "training-server"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    116,
+    142
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_model_download_from_training_server",
+   "type": "function",
+   "name": "test_model_download_from_training_server",
+   "summary": "For each existing ttft/tpot model, validates /model/{name}/info metadata and then streams /model/{name}/download in chunks with retry logic, asserting nonzero content length.",
+   "tags": [
+    "pytest",
+    "model-download",
+    "sync-protocol",
+    "retry"
+   ],
+   "complexity": "moderate",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    145,
+    184
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_add_training_data_to_training_server",
+   "type": "function",
+   "name": "test_add_training_data_to_training_server",
+   "summary": "Posts 50 synthetic training samples with a known linear latency pattern (including noqueue samples and token-in-flight terms) to /add_training_data_bulk and asserts the 202 acceptance message.",
+   "tags": [
+    "pytest",
+    "ingestion",
+    "training-data",
+    "synthetic-data"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    257,
+    298
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_prediction_server_model_sync",
+   "type": "function",
+   "name": "test_prediction_server_model_sync",
+   "summary": "Triggers POST /reload on the prediction server and polls /status (re-triggering reload) for up to 60 seconds until is_ready becomes true, validating the cross-server model sync path.",
+   "tags": [
+    "pytest",
+    "model-sync",
+    "polling",
+    "cross-server"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    301,
+    332
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_prediction_via_prediction_server",
+   "type": "function",
+   "name": "test_prediction_via_prediction_server",
+   "summary": "Posts a single feature payload to the prediction server's /predict and asserts a 200 response containing positive ttft_ms/tpot_ms and all required metadata fields.",
+   "tags": [
+    "pytest",
+    "prediction",
+    "single-request"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    335,
+    362
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_bulk_prediction_strict",
+   "type": "function",
+   "name": "test_bulk_prediction_strict",
+   "summary": "Sends two valid requests to /predict/bulk/strict and asserts the bulk response structure (counts, processing time) and that every prediction contains ttft_ms, tpot_ms, and model metadata.",
+   "tags": [
+    "pytest",
+    "bulk",
+    "strict",
+    "prediction"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    365,
+    420
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_bulk_prediction_with_validation_errors",
+   "type": "function",
+   "name": "test_bulk_prediction_with_validation_errors",
+   "summary": "Confirms that a bulk request containing a request missing prefix_cache_score is rejected at the Pydantic layer with HTTP 422 and a detail payload on /predict/bulk.",
+   "tags": [
+    "pytest",
+    "validation",
+    "error-handling",
+    "bulk"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    423,
+    457
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_prediction_noqueue_routing",
+   "type": "function",
+   "name": "test_prediction_noqueue_routing",
+   "summary": "Sends predictions with num_request_waiting=0 and num_request_waiting=5 to verify both the noqueue and queued ensemble routing paths return positive predictions, then reports ensemble_active from /status.",
+   "tags": [
+    "pytest",
+    "ensemble",
+    "queue-routing",
+    "prediction"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    684,
+    725
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_training_server_metrics",
+   "type": "function",
+   "name": "test_training_server_metrics",
+   "summary": "Fetches /metrics from the training server and asserts the Prometheus text contains model_type, coefficient or importance series (including prefix_cache_score), training_samples_count, and the ensemble_active/ensemble_mode gauges.",
+   "tags": [
+    "pytest",
+    "prometheus",
+    "metrics",
+    "observability"
+   ],
+   "complexity": "simple",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    1045,
+    1075
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_dual_server_quantile_regression_learns_distribution",
+   "type": "function",
+   "name": "test_dual_server_quantile_regression_learns_distribution",
+   "summary": "End-to-end statistical test: trains on 3000 synthetic samples with Gaussian noise, syncs models to the prediction server, then asserts bulk quantile predictions match mu + z*sigma within 15% relative error for at least 70% of test points and that empirical coverage lands within \u00b15% of the target quantile.",
+   "tags": [
+    "pytest",
+    "statistical-test",
+    "quantile-calibration",
+    "e2e",
+    "coverage"
+   ],
+   "complexity": "complex",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    1214,
+    1374
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_end_to_end_workflow",
+   "type": "function",
+   "name": "test_end_to_end_workflow",
+   "summary": "Full pipeline smoke test with graceful degradation: posts random training data, waits, triggers /reload on the prediction server, and makes five predictions with retries, skipping rather than failing when servers are unreachable.",
+   "tags": [
+    "pytest",
+    "e2e",
+    "smoke-test",
+    "resilience"
+   ],
+   "complexity": "moderate",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    1717,
+    1780
+   ]
+  },
+  {
+   "id": "function:tests/test_dual_server_client.py:test_training_server_flush_api",
+   "type": "function",
+   "name": "test_training_server_flush_api",
+   "summary": "Nine-step exercise of the flush API and /data/status: adds data, flushes training-only, test-only, everything, and with default parameters, asserting counts, the ensemble section of data status, and bucket distribution reporting after each step.",
+   "tags": [
+    "pytest",
+    "flush",
+    "admin",
+    "data-status"
+   ],
+   "complexity": "moderate",
+   "filePath": "tests/test_dual_server_client.py",
+   "lineRange": [
+    1806,
+    2000
+   ]
+  },
+  {
+   "id": "pipeline:.github/workflows/ci-pr-checks.yaml",
+   "type": "pipeline",
+   "name": "CI - PR Checks",
+   "summary": "PR workflow against main: detects code changes with dorny/paths-filter (skipping expensive jobs for docs-only PRs), runs ruff check and ruff format on Python 3.11, and matrix-builds all three service Dockerfiles (prediction, training, test) with buildx without pushing.",
+   "tags": [
+    "ci",
+    "github-actions",
+    "lint",
+    "ruff",
+    "docker-build",
+    "pull-request"
+   ],
+   "complexity": "moderate",
+   "filePath": ".github/workflows/ci-pr-checks.yaml"
+  },
+  {
+   "id": "pipeline:.github/workflows/ci-release.yaml",
+   "type": "pipeline",
+   "name": "CI - Release",
+   "summary": "On v* tags or published releases, matrix-builds and pushes the prediction-server, training-server, and test images to ghcr.io/llm-d via the local docker-build-and-push composite action, then runs the trivy-scan composite action on each pushed image.",
+   "tags": [
+    "ci",
+    "release",
+    "github-actions",
+    "ghcr",
+    "docker",
+    "trivy"
+   ],
+   "complexity": "moderate",
+   "filePath": ".github/workflows/ci-release.yaml"
+  },
+  {
+   "id": "pipeline:.github/workflows/ci-signed-commits.yaml",
+   "type": "pipeline",
+   "name": "Check Signed Commits",
+   "summary": "On pull_request_target, calls the reusable llm-d/llm-d-infra workflow reusable-signed-commits.yaml to verify every commit in a PR carries a DCO sign-off.",
+   "tags": [
+    "ci",
+    "dco",
+    "reusable-workflow",
+    "llm-d-infra"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/workflows/ci-signed-commits.yaml"
+  },
+  {
+   "id": "pipeline:.github/workflows/copilot-setup-steps.yaml",
+   "type": "pipeline",
+   "name": "Copilot Setup Steps",
+   "summary": "Manually-dispatched (or self-triggered on path change) workflow that installs and verifies the gh-aw GitHub CLI extension for GitHub Copilot agentic workflows.",
+   "tags": [
+    "ci",
+    "copilot",
+    "gh-aw",
+    "setup"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/workflows/copilot-setup-steps.yaml"
+  },
+  {
+   "id": "pipeline:.github/workflows/non-main-gatekeeper.yaml",
+   "type": "pipeline",
+   "name": "Non-Main Gatekeeper",
+   "summary": "On PR events, delegates to the reusable llm-d-infra reusable-non-main-gatekeeper.yaml workflow to gate pull requests targeting non-main branches.",
+   "tags": [
+    "ci",
+    "branch-protection",
+    "reusable-workflow",
+    "llm-d-infra"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/workflows/non-main-gatekeeper.yaml"
+  },
+  {
+   "id": "pipeline:.github/workflows/prow-github.yaml",
+   "type": "pipeline",
+   "name": "Prow Commands",
+   "summary": "On issue comments, calls the reusable llm-d-infra reusable-prow-commands.yaml workflow to handle Prow-style slash commands (labels, lgtm, etc.) on issues and PRs.",
+   "tags": [
+    "ci",
+    "prow",
+    "chatops",
+    "reusable-workflow",
+    "llm-d-infra"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/workflows/prow-github.yaml"
+  },
+  {
+   "id": "pipeline:.github/workflows/prow-pr-automerge.yaml",
+   "type": "pipeline",
+   "name": "Prow Auto-merge",
+   "summary": "Runs every 5 minutes on a cron schedule and calls the reusable llm-d-infra reusable-prow-automerge.yaml workflow to auto-merge PRs that satisfy Prow approval/lgtm conditions.",
+   "tags": [
+    "ci",
+    "prow",
+    "automerge",
+    "cron",
+    "reusable-workflow"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/workflows/prow-pr-automerge.yaml"
+  },
+  {
+   "id": "pipeline:.github/workflows/prow-pr-remove-lgtm.yaml",
+   "type": "pipeline",
+   "name": "Prow Remove LGTM",
+   "summary": "On pull_request events, calls the reusable llm-d-infra reusable-prow-remove-lgtm.yaml workflow to strip the lgtm label when a PR is updated with new commits.",
+   "tags": [
+    "ci",
+    "prow",
+    "lgtm",
+    "reusable-workflow"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/workflows/prow-pr-remove-lgtm.yaml"
+  },
+  {
+   "id": "pipeline:.github/workflows/stale.yaml",
+   "type": "pipeline",
+   "name": "Mark Stale Issues",
+   "summary": "Daily cron (01:00) workflow that calls the reusable llm-d-infra reusable-stale.yaml workflow to mark inactive issues and PRs as stale.",
+   "tags": [
+    "ci",
+    "stale-bot",
+    "cron",
+    "reusable-workflow"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/workflows/stale.yaml"
+  },
+  {
+   "id": "pipeline:.github/workflows/unstale.yaml",
+   "type": "pipeline",
+   "name": "Unstale Issues",
+   "summary": "On issue reopen or new comment, calls the reusable llm-d-infra reusable-unstale.yaml workflow to remove the stale marking from issues that regain activity.",
+   "tags": [
+    "ci",
+    "stale-bot",
+    "reusable-workflow"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/workflows/unstale.yaml"
+  },
+  {
+   "id": "pipeline:.github/actions/docker-build-and-push/action.yml",
+   "type": "pipeline",
+   "name": "Docker Build and Push composite action",
+   "summary": "Composite GitHub Action that sets up QEMU and Buildx, logs into ghcr.io, and builds/pushes a multi-arch (linux/amd64,linux/arm64) image with OCI source/license annotations; skips the 'latest' tag for prereleases and accepts a configurable Dockerfile, registry, and context.",
+   "tags": [
+    "github-actions",
+    "composite-action",
+    "docker",
+    "buildx",
+    "multi-arch",
+    "ghcr"
+   ],
+   "complexity": "moderate",
+   "filePath": ".github/actions/docker-build-and-push/action.yml"
+  },
+  {
+   "id": "pipeline:.github/actions/trivy-scan/action.yml",
+   "type": "pipeline",
+   "name": "Trivy Security Scan composite action",
+   "summary": "Composite GitHub Action wrapping aquasecurity/trivy-action to scan a container image for HIGH/CRITICAL vulnerabilities in table format; exit-code defaults to 0 so findings warn rather than fail the build.",
+   "tags": [
+    "github-actions",
+    "composite-action",
+    "security",
+    "trivy",
+    "vulnerability-scan"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/actions/trivy-scan/action.yml"
+  },
+  {
+   "id": "document:.github/ISSUE_TEMPLATE/bug_report.yml",
+   "type": "document",
+   "name": "Bug Report issue form",
+   "summary": "GitHub issue form (labels: bug, triage) collecting contact details, what happened vs expected, version, reproduction steps, environment (Kubernetes/cloud/GPU/OS), and log output for bug reports.",
+   "tags": [
+    "issue-template",
+    "bug-report",
+    "github",
+    "triage"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/ISSUE_TEMPLATE/bug_report.yml"
+  },
+  {
+   "id": "config:.github/ISSUE_TEMPLATE/config.yml",
+   "type": "config",
+   "name": "Issue template chooser config",
+   "summary": "Disables blank issues and adds contact links pointing users to the llm-d GitHub Discussions and the cloud-native Slack channel for questions instead of issues.",
+   "tags": [
+    "issue-template",
+    "github",
+    "community",
+    "config"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/ISSUE_TEMPLATE/config.yml"
+  },
+  {
+   "id": "document:.github/ISSUE_TEMPLATE/feature_request.yml",
+   "type": "document",
+   "name": "Feature Request issue form",
+   "summary": "GitHub issue form (labels: enhancement, triage) collecting problem statement, proposed solution, alternatives considered, willingness to contribute, and additional context for feature suggestions.",
+   "tags": [
+    "issue-template",
+    "feature-request",
+    "github",
+    "triage"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/ISSUE_TEMPLATE/feature_request.yml"
+  },
+  {
+   "id": "document:.github/PULL_REQUEST_TEMPLATE.md",
+   "type": "document",
+   "name": "Pull request template",
+   "summary": "PR description template asking what the change does, why it is needed, and how it was tested, with a checklist covering DCO sign-off, contributing guidelines, make test/lint passing, docs updates, and related issue links.",
+   "tags": [
+    "pr-template",
+    "github",
+    "checklist",
+    "dco"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/PULL_REQUEST_TEMPLATE.md"
+  },
+  {
+   "id": "config:.github/CODEOWNERS",
+   "type": "config",
+   "name": "CODEOWNERS",
+   "summary": "GitHub code-ownership file assigning @ahg-g as the default owner for everything in the repository.",
+   "tags": [
+    "codeowners",
+    "github",
+    "ownership",
+    "review"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/CODEOWNERS"
+  },
+  {
+   "id": "config:.github/dependabot.yml",
+   "type": "config",
+   "name": "Dependabot configuration",
+   "summary": "Weekly Dependabot updates for three ecosystems: pip (major version bumps ignored, up to 10 open PRs), GitHub Actions, and Docker base images, each with dependency labels and deps(...) commit-message prefixes.",
+   "tags": [
+    "dependabot",
+    "dependencies",
+    "automation",
+    "pip",
+    "docker",
+    "github-actions"
+   ],
+   "complexity": "simple",
+   "filePath": ".github/dependabot.yml"
+  },
+  {
+   "id": "service:deploy/dual-server-deployment.yaml",
+   "type": "service",
+   "name": "Dual-server Kubernetes deployment",
+   "summary": "Complete standalone topology for GKE: ConfigMaps for both servers, a hyperdisk StorageClass, a ReadWriteOnce PVC for trained models, a single-replica training-server Deployment (:8000) and a 10-replica prediction-server Deployment (:8001, emptyDir model cache), plus training-service (ClusterIP), prediction-service (LoadBalancer 80->8001), and an optional external training service. Models move over HTTP so no ReadWriteMany volume is needed.",
+   "tags": [
+    "kubernetes",
+    "deployment",
+    "gke",
+    "configmap",
+    "pvc",
+    "service",
+    "dual-server"
+   ],
+   "complexity": "complex",
+   "filePath": "deploy/dual-server-deployment.yaml"
+  },
+  {
+   "id": "service:deploy/kustomization.yaml",
+   "type": "service",
+   "name": "Kustomization",
+   "summary": "Kustomize entrypoint that includes dual-server-deployment.yaml (test job commented out), rewrites the three placeholder images to the k8s-staging-images gateway-api-inference-extension registry, and applies an app.kubernetes.io/part-of label to all resources.",
+   "tags": [
+    "kubernetes",
+    "kustomize",
+    "images",
+    "deployment"
+   ],
+   "complexity": "simple",
+   "filePath": "deploy/kustomization.yaml"
+  },
+  {
+   "id": "service:deploy/test-dual-server-deployment.yaml",
+   "type": "service",
+   "name": "Latency-predictor test Job",
+   "summary": "Kubernetes Job that runs the test image with `pytest -v -s tests/test_dual_server_client.py` against the in-cluster training-service:8000 and prediction-service:80, with TEST_TIMEOUT/TARGET_QPS env vars, an emptyDir for results, and backoffLimit 3.",
+   "tags": [
+    "kubernetes",
+    "job",
+    "integration-test",
+    "load-test",
+    "pytest"
+   ],
+   "complexity": "moderate",
+   "filePath": "deploy/test-dual-server-deployment.yaml"
+  },
+  {
+   "id": "document:docs/architecture.md",
+   "type": "document",
+   "name": "Architecture document",
+   "summary": "Ground-truth end-to-end architecture: request flow from user through Envoy (ext_proc) and the EPP flow-control layer and scheduler plugin pipeline to this repo's prediction (:8001) and training (:8000) servers and on to vLLM pods, with mermaid diagrams, the llm-d/EPP plugin catalog, batch-inference internals (coalescing proxy, numpy fast path), model-sync and retraining mechanics, feature definitions and the cross-server feature-parity invariant, deployment topologies, full env-var configuration reference, and the HTTP API summary.",
+   "tags": [
+    "architecture",
+    "documentation",
+    "epp",
+    "flow-control",
+    "ttft",
+    "tpot",
+    "mermaid",
+    "api-reference"
+   ],
+   "complexity": "complex",
+   "filePath": "docs/architecture.md"
+  },
+  {
+   "id": "document:docs/upstream-versions.md",
+   "type": "document",
+   "name": "Upstream dependency version tracking",
+   "summary": "Placeholder source-of-truth table for an upstream dependency monitor workflow; the dependency table is currently empty (only the format template/comment is present).",
+   "tags": [
+    "documentation",
+    "dependencies",
+    "upstream",
+    "placeholder"
+   ],
+   "complexity": "simple",
+   "filePath": "docs/upstream-versions.md"
+  },
+  {
+   "id": "document:.cursor/rules/kubernetes.mdc",
+   "type": "document",
+   "name": "Cursor rule: Kubernetes conventions",
+   "summary": "Scoped rule (globs deploy/**, Dockerfile*) codifying manifest conventions: port 8000/8001 split, single-replica training server on a RWO PVC vs horizontally scaled prediction servers with emptyDir (never ReadWriteMany), mandatory /healthz and /readyz probes, ConfigMap env-var names matching the Settings classes, and keeping images topology-agnostic for the EPP-sidecar deployment.",
+   "tags": [
+    "cursor-rule",
+    "kubernetes",
+    "conventions",
+    "deployment",
+    "probes"
+   ],
+   "complexity": "simple",
+   "filePath": ".cursor/rules/kubernetes.mdc"
+  },
+  {
+   "id": "document:.cursor/rules/performance.mdc",
+   "type": "document",
+   "name": "Cursor rule: hot-path performance",
+   "summary": "Scoped rule (globs src/**) protecting the /predict/bulk/strict hot path: preserve the np.fromiter/dict-of-arrays predict_batch_fast fast path, ORJSONResponse plain-dict responses, lock-snapshot discipline, per-regime ensemble batching, checksum-guarded reloads, and require measurements for any claimed performance win.",
+   "tags": [
+    "cursor-rule",
+    "performance",
+    "hot-path",
+    "numpy",
+    "locking"
+   ],
+   "complexity": "simple",
+   "filePath": ".cursor/rules/performance.mdc"
+  },
+  {
+   "id": "document:.cursor/rules/project-context.mdc",
+   "type": "document",
+   "name": "Cursor rule: project context",
+   "summary": "Always-applied rule stating the repo's identity (TTFT/TPOT prediction for SLO-aware routing), the end-to-end flow through Envoy/EPP to the two servers, pointers to docs/architecture.md and AGENTS.md as ground truth, when to delegate to each subagent, and a prohibition on committing/pushing/PRs without explicit permission.",
+   "tags": [
+    "cursor-rule",
+    "project-context",
+    "always-apply",
+    "agents"
+   ],
+   "complexity": "simple",
+   "filePath": ".cursor/rules/project-context.mdc"
+  },
+  {
+   "id": "document:.cursor/rules/python.mdc",
+   "type": "document",
+   "name": "Cursor rule: Python conventions",
+   "summary": "Scoped rule (globs **/*.py) requiring Python 3.11+ idioms, ruff lint/format (line length 120, rules E/W/F/I/UP), intentional Pydantic v1-style API, try/except guards for optional deps, the daemon-thread/Event/lock-snapshot threading pattern, and keeping the duplicated feature-engineering functions identical in both server files.",
+   "tags": [
+    "cursor-rule",
+    "python",
+    "ruff",
+    "pydantic",
+    "threading",
+    "conventions"
+   ],
+   "complexity": "simple",
+   "filePath": ".cursor/rules/python.mdc"
+  },
+  {
+   "id": "document:.cursor/rules/review.mdc",
+   "type": "document",
+   "name": "Cursor rule: code review checklist",
+   "summary": "Eight-point review checklist for diffs/PRs: feature parity across both servers, EPP-consumed API compatibility, joblib artifact compatibility during rollout, concurrency/lock discipline, hot-path regressions, config completeness (Settings + docs + ConfigMaps), test coverage of both prediction paths and ensemble regimes, and DCO sign-off with no approving/merging on the user's behalf.",
+   "tags": [
+    "cursor-rule",
+    "code-review",
+    "checklist",
+    "api-compatibility",
+    "dco"
+   ],
+   "complexity": "simple",
+   "filePath": ".cursor/rules/review.mdc"
+  },
+  {
+   "id": "document:.cursor/agents/bug-hunter.md",
+   "type": "document",
+   "name": "Subagent: bug-hunter",
+   "summary": "Read-only subagent persona for correctness audits: enumerates repo-specific bug classes (train/predict feature drift, thread safety, model-sync races, silent fallbacks, validation gaps, API-contract regressions, resource leaks) and outputs draft GitHub issues matching bug_report.yml with severity, evidence, reproduction, and suggested fix \u2014 never filing issues itself.",
+   "tags": [
+    "cursor-agent",
+    "subagent",
+    "bug-hunting",
+    "read-only",
+    "audit"
+   ],
+   "complexity": "moderate",
+   "filePath": ".cursor/agents/bug-hunter.md"
+  },
+  {
+   "id": "document:.cursor/agents/perf-optimizer.md",
+   "type": "document",
+   "name": "Subagent: perf-optimizer",
+   "summary": "Read-only performance-analyst subagent focused on the /predict/bulk/strict hot path (~300 QPS per replica): looks for per-request DataFrame construction, lock hold time, allocation churn, and serialization costs, and outputs ranked opportunities with location, cost rationale, proposed diff, impact estimate, and a concrete measurement plan (load client, timeit, py-spy) \u2014 never applying changes.",
+   "tags": [
+    "cursor-agent",
+    "subagent",
+    "performance",
+    "hot-path",
+    "read-only"
+   ],
+   "complexity": "moderate",
+   "filePath": ".cursor/agents/perf-optimizer.md"
+  },
+  {
+   "id": "document:.cursor/agents/pr-reviewer.md",
+   "type": "document",
+   "name": "Subagent: pr-reviewer",
+   "summary": "Read-only code-review subagent that reads diffs hunk by hunk, applies the .cursor/rules/review.mdc checklist (feature parity, EPP API breakage, concurrency, hot path, manifests, tests, DCO), and outputs a verdict, numbered blocking findings with file:line, non-blocking suggestions, and draft review comments \u2014 never posting to GitHub or committing.",
+   "tags": [
+    "cursor-agent",
+    "subagent",
+    "code-review",
+    "read-only"
+   ],
+   "complexity": "moderate",
+   "filePath": ".cursor/agents/pr-reviewer.md"
+  },
+  {
+   "id": "document:.cursor/agents/repo-guide.md",
+   "type": "document",
+   "name": "Subagent: repo-guide",
+   "summary": "Read-only repo-expert subagent holding the full end-to-end context (Envoy ext_proc, EPP flow control and plugin catalog, coalescing proxy, both servers' internals) to answer architecture and code-location questions with citations, consulting docs/architecture.md and AGENTS.md as ground truth and the web for cross-repo questions.",
+   "tags": [
+    "cursor-agent",
+    "subagent",
+    "architecture",
+    "q-and-a",
+    "read-only"
+   ],
+   "complexity": "moderate",
+   "filePath": ".cursor/agents/repo-guide.md"
+  },
+  {
+   "id": "document:README.md",
+   "type": "document",
+   "name": "README",
+   "summary": "Project overview: continuous online TTFT/TPOT prediction powering latency-based and SLO-aware routing in the Gateway API Inference Extension / llm-d, with the two FastAPI services described, quick-start and make commands, repo layout, an at-a-glance architecture diagram, and pointers to architecture, contributing, DCO, security, and license docs.",
+   "tags": [
+    "readme",
+    "documentation",
+    "overview",
+    "quick-start",
+    "llm-d"
+   ],
+   "complexity": "simple",
+   "filePath": "README.md"
+  },
+  {
+   "id": "document:AGENTS.md",
+   "type": "document",
+   "name": "AGENTS.md",
+   "summary": "Machine-readable onboarding for AI coding agents: commands (make install/test/lint/fmt/image-build, uvicorn invocations), the project's position in the llm-d stack, a file map, four do-not-break invariants (feature-engineering parity, EPP-consumed public API, hot-path fast path, model artifact compatibility), code style, testing expectations, and hard boundaries (ask before any git/GitHub write actions).",
+   "tags": [
+    "agents",
+    "onboarding",
+    "invariants",
+    "documentation",
+    "ai-tooling"
+   ],
+   "complexity": "moderate",
+   "filePath": "AGENTS.md"
+  },
+  {
+   "id": "document:CONTRIBUTING.md",
+   "type": "document",
+   "name": "Contributing guidelines",
+   "summary": "llm-d contribution process: lazy consensus, proposal documents required for public-API features, review requirements (maintainer approval, gated merges), commit/PR style with mandatory DCO sign-off, OWNERS-based code ownership, the three testing tiers, and community/communication channels.",
+   "tags": [
+    "contributing",
+    "documentation",
+    "process",
+    "dco",
+    "governance"
+   ],
+   "complexity": "simple",
+   "filePath": "CONTRIBUTING.md"
+  },
+  {
+   "id": "document:CODE_OF_CONDUCT.md",
+   "type": "document",
+   "name": "Code of Conduct",
+   "summary": "Contributor Covenant v1.4-based code of conduct covering pledge, behavior standards, maintainer responsibilities, and scope for project and public spaces.",
+   "tags": [
+    "code-of-conduct",
+    "community",
+    "governance",
+    "documentation"
+   ],
+   "complexity": "simple",
+   "filePath": "CODE_OF_CONDUCT.md"
+  },
+  {
+   "id": "document:SECURITY.md",
+   "type": "document",
+   "name": "Security policy",
+   "summary": "Vulnerability disclosure process for the llm-d community: report privately to llm-d-security-reporting@googlegroups.com, 3-working-day acknowledgment, negotiated public disclosure timing, and the llm-d-security-announce list for announcements.",
+   "tags": [
+    "security",
+    "vulnerability-disclosure",
+    "policy",
+    "documentation"
+   ],
+   "complexity": "simple",
+   "filePath": "SECURITY.md"
+  },
+  {
+   "id": "document:PR_SIGNOFF.md",
+   "type": "document",
+   "name": "Commit sign-off and signing guide",
+   "summary": "Detailed walkthrough of DCO sign-off (git commit -s, required for merging) versus cryptographic commit signing, including step-by-step GPG and SSH signing-key setup on GitHub and how to repair PRs whose commits lack sign-off.",
+   "tags": [
+    "dco",
+    "git",
+    "signing",
+    "documentation",
+    "how-to"
+   ],
+   "complexity": "moderate",
+   "filePath": "PR_SIGNOFF.md"
+  },
+  {
+   "id": "config:OWNERS",
+   "type": "config",
+   "name": "OWNERS",
+   "summary": "Kubernetes-style OWNERS file listing ahg-g and kaushikmitr as both reviewers and approvers for the repository.",
+   "tags": [
+    "owners",
+    "ownership",
+    "prow",
+    "review"
+   ],
+   "complexity": "simple",
+   "filePath": "OWNERS"
+  },
+  {
+   "id": "file:Makefile",
+   "type": "file",
+   "name": "Makefile",
+   "summary": "Developer entrypoint with self-documenting help: install (editable pip install + ruff/pytest), test, lint, fmt, pre-commit, per-service multi-arch buildx targets for the prediction/training/test images (image-build/image-push to ghcr.io/llm-d with OCI annotations), and clean.",
+   "tags": [
+    "make",
+    "build",
+    "docker",
+    "developer-workflow",
+    "lint",
+    "test"
+   ],
+   "complexity": "moderate",
+   "filePath": "Makefile"
+  },
+  {
+   "id": "config:pyproject.toml",
+   "type": "config",
+   "name": "pyproject.toml",
+   "summary": "Packaging and tooling config: setuptools build of the llm-d-latency-predictor package (src layout, Python >=3.11, dependencies dynamically loaded from requirements.txt), pytest testpaths, and ruff configuration (line length 120, py311, rules E/W/F/I/UP with E501/F401 ignored for imported scientific code).",
+   "tags": [
+    "packaging",
+    "setuptools",
+    "ruff",
+    "pytest",
+    "python",
+    "config"
+   ],
+   "complexity": "simple",
+   "filePath": "pyproject.toml"
+  },
+  {
+   "id": "config:requirements.txt",
+   "type": "config",
+   "name": "requirements.txt",
+   "summary": "Unpinned runtime dependency list for both servers: fastapi, uvicorn[standard], scikit-learn, numpy, pandas, joblib, river, pydantic, requests, xgboost, aiohttp, lightgbm, and orjson.",
+   "tags": [
+    "dependencies",
+    "python",
+    "pip",
+    "config"
+   ],
+   "complexity": "simple",
+   "filePath": "requirements.txt"
+  },
+  {
+   "id": "file:build-deploy.sh",
+   "type": "file",
+   "name": "build-deploy.sh",
+   "summary": "GKE helper script with subcommands (check/build/push/deploy/test/info/all/full): validates required files, builds and tags the training/prediction/test images for Google Artifact Registry, pushes them, applies dual-server-deployment.yaml and waits for rollouts, deploys/runs the pytest test Job, and probes the LoadBalancer endpoints; placeholders for GCP project/region must be filled in.",
+   "tags": [
+    "shell-script",
+    "build",
+    "deploy",
+    "gke",
+    "docker",
+    "artifact-registry"
+   ],
+   "complexity": "complex",
+   "filePath": "build-deploy.sh"
+  },
+  {
+   "id": "config:.pre-commit-config.yaml",
+   "type": "config",
+   "name": "pre-commit configuration",
+   "summary": "Canonical llm-d pre-commit setup: general file-hygiene hooks (whitespace, EOF, YAML/JSON checks, large files, merge conflicts), system shellcheck and hadolint hooks, markdownlint with --fix, and yamllint with inline relaxed rules (line length 250, document-start disabled).",
+   "tags": [
+    "pre-commit",
+    "lint",
+    "hooks",
+    "shellcheck",
+    "hadolint",
+    "yamllint",
+    "markdownlint"
+   ],
+   "complexity": "simple",
+   "filePath": ".pre-commit-config.yaml"
+  },
+  {
+   "id": "config:.hadolint.yaml",
+   "type": "config",
+   "name": "hadolint configuration",
+   "summary": "Dockerfile linter config with failure-threshold warning and a curated ignore list (apt/dnf/pip pinning rules, WORKDIR-vs-cd, consecutive RUNs, embedded shellcheck rules) tuned for this repo's build patterns.",
+   "tags": [
+    "hadolint",
+    "dockerfile",
+    "lint",
+    "config"
+   ],
+   "complexity": "simple",
+   "filePath": ".hadolint.yaml"
+  },
+  {
+   "id": "config:.yamllint.yml",
+   "type": "config",
+   "name": "yamllint configuration",
+   "summary": "yamllint config for Kubernetes-heavy repos: extends default with max line length 250, document-start disabled, and truthy key checking off.",
+   "tags": [
+    "yamllint",
+    "yaml",
+    "lint",
+    "kubernetes",
+    "config"
+   ],
+   "complexity": "simple",
+   "filePath": ".yamllint.yml"
+  },
+  {
+   "id": "config:.prowlabels.yaml",
+   "type": "config",
+   "name": "Prow labels configuration",
+   "summary": "Label catalog for the GitHub Prow action: kind labels (bug, security, feature, docs) and priority labels (p0, p1, p2) usable on issues and PRs.",
+   "tags": [
+    "prow",
+    "labels",
+    "github",
+    "config"
+   ],
+   "complexity": "simple",
+   "filePath": ".prowlabels.yaml"
+  },
+  {
+   "id": "config:_typos.toml",
+   "type": "config",
+   "name": "typos configuration",
+   "summary": "Configuration for the crate-ci typos spell checker, whitelisting abbreviations (AKS, IST, ND) as intentional words and providing a place for repo-specific false positives.",
+   "tags": [
+    "typos",
+    "spell-check",
+    "config"
+   ],
+   "complexity": "simple",
+   "filePath": "_typos.toml"
+  },
+  {
+   "id": "config:.gitattributes",
+   "type": "config",
+   "name": ".gitattributes",
+   "summary": "Marks generated agentic-workflow files (.github/workflows/*.lock.yml and *.campaign.g.md) as linguist-generated with merge=ours strategy.",
+   "tags": [
+    "git",
+    "linguist",
+    "generated-files",
+    "config"
+   ],
+   "complexity": "simple",
+   "filePath": ".gitattributes"
+  },
+  {
+   "id": "config:.gitignore",
+   "type": "config",
+   "name": ".gitignore",
+   "summary": "Ignore rules covering compiled binaries, Go workspace/test artifacts (from the repo template), build output, IDE/OS files, environment secrets, and Python caches (__pycache__, egg-info, pytest/ruff caches).",
+   "tags": [
+    "git",
+    "ignore",
+    "config"
+   ],
+   "complexity": "simple",
+   "filePath": ".gitignore"
+  },
+  {
+   "id": "file:hooks/pre-commit",
+   "type": "file",
+   "name": "Git pre-commit hook script",
+   "summary": "Minimal bash pre-commit hook that runs `make lint` then `make test` and fails the commit if either fails.",
+   "tags": [
+    "git-hook",
+    "shell-script",
+    "lint",
+    "test"
+   ],
+   "complexity": "simple",
+   "filePath": "hooks/pre-commit"
+  }
+ ],
+ "edges": [
+  {
+   "source": "service:Dockerfile-prediction",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "deploys",
+   "weight": 1.0
+  },
+  {
+   "source": "service:Dockerfile-training",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "deploys",
+   "weight": 1.0
+  },
+  {
+   "source": "service:Dockerfile-test",
+   "target": "file:tests/test_dual_server_client.py",
+   "type": "deploys",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "class:src/llm_d_latency_predictor/prediction_server.py:PredictSettings",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "class:src/llm_d_latency_predictor/prediction_server.py:QueueGatedModel",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "class:src/llm_d_latency_predictor/prediction_server.py:ModelSyncer",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "class:src/llm_d_latency_predictor/prediction_server.py:PredictionRequest",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "class:src/llm_d_latency_predictor/prediction_server.py:PredictionResponse",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "class:src/llm_d_latency_predictor/prediction_server.py:BulkPredictionRequest",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "class:src/llm_d_latency_predictor/prediction_server.py:BulkPredictionResponseWithErrors",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/status",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict/bulk/strict",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict/bulk",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/reload",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/healthz",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/readyz",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:ModelSyncer",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_download_model_if_newer",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:ModelSyncer",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:sync_models",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:ModelSyncer",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_sync_loop",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_with_interaction",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_for_ensemble",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:load_models",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_predict_with_models",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:predict",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch_fast",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:RandomDropDeque",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:Settings",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:QueueGatedModel",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:TrainingEntry",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:PredictionRequest",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:PredictionResponse",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:BulkTrainingRequest",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:FlushRequest",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:quantile_loss",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:quantile_coverage",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:quantile_violation_rate",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:continuous_training_loop",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/add_training_data_bulk",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/predict",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/healthz",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/readyz",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/metrics",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/flush",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/data/status",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/download/info",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/ttft/xgb/json",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/tpot/xgb/json",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/info",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/download",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/models/list",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/ttft/lgb/txt",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/tpot/lgb/txt",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/ttft/lgb/importances",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/tpot/lgb/importances",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/debug/prefix_distribution",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_get_prefix_bucket",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_get_queue_bucket",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_get_cache_bucket",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_split_samples_by_queue",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_for_ensemble",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_with_interaction",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_train_model_with_scaling",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_calculate_metrics_on_test",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:train",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:predict",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:add_training_sample",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:add_training_samples",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_save_models_unlocked",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:flush_training_data",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:load_models",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:get_metrics",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_prediction_server_status",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_training_server_models_list",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_model_download_from_training_server",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_add_training_data_to_training_server",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_prediction_server_model_sync",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_prediction_via_prediction_server",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_bulk_prediction_strict",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_bulk_prediction_with_validation_errors",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_prediction_noqueue_routing",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_training_server_metrics",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_dual_server_quantile_regression_learns_distribution",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_end_to_end_workflow",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "file:tests/test_dual_server_client.py",
+   "target": "function:tests/test_dual_server_client.py:test_training_server_flush_api",
+   "type": "contains",
+   "weight": 1.0
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:predict",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict/bulk",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict/bulk/strict",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch_fast",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/reload",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:sync_models",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/prediction_server.py:/reload",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:load_models",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:_sync_loop",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:sync_models",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:_sync_loop",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:load_models",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:sync_models",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_download_model_if_newer",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:predict",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_with_interaction",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:predict",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_for_ensemble",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:predict",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_predict_with_models",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_with_interaction",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_for_ensemble",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_predict_with_models",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch_fast",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_with_interaction",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch_fast",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_for_ensemble",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch_fast",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_predict_with_models",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_for_ensemble",
+   "target": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_with_interaction",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:_download_model_if_newer",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/info",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:_download_model_if_newer",
+   "target": "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/download",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/training_server.py:/add_training_data_bulk",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:add_training_samples",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:add_training_samples",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:add_training_sample",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:add_training_sample",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_get_queue_bucket",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:add_training_sample",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_get_cache_bucket",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:add_training_sample",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_get_prefix_bucket",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/training_server.py:/predict",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:predict",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/training_server.py:/metrics",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:get_metrics",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/training_server.py:/flush",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:flush_training_data",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "endpoint:src/llm_d_latency_predictor/training_server.py:/data/status",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_split_samples_by_queue",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:continuous_training_loop",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:train",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:train",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_with_interaction",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:train",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_for_ensemble",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:train",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_train_model_with_scaling",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:train",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_split_samples_by_queue",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:train",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_calculate_metrics_on_test",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:train",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_save_models_unlocked",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:_calculate_metrics_on_test",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:quantile_loss",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:_calculate_metrics_on_test",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:quantile_coverage",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:_calculate_metrics_on_test",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:quantile_violation_rate",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:_calculate_metrics_on_test",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_with_interaction",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:predict",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_with_interaction",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:load_models",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_save_models_unlocked",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_for_ensemble",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_with_interaction",
+   "type": "calls",
+   "weight": 0.8
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_with_interaction",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_with_interaction",
+   "type": "similar_to",
+   "weight": 0.5
+  },
+  {
+   "source": "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_for_ensemble",
+   "target": "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_for_ensemble",
+   "type": "similar_to",
+   "weight": 0.5
+  },
+  {
+   "source": "class:src/llm_d_latency_predictor/prediction_server.py:QueueGatedModel",
+   "target": "class:src/llm_d_latency_predictor/training_server.py:QueueGatedModel",
+   "type": "similar_to",
+   "weight": 0.5
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "target": "file:tests/test_dual_server_client.py",
+   "type": "tested_by",
+   "weight": 0.5
+  },
+  {
+   "source": "file:src/llm_d_latency_predictor/training_server.py",
+   "target": "file:tests/test_dual_server_client.py",
+   "type": "tested_by",
+   "weight": 0.5
+  },
+  {
+   "source": "document:README.md",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:README.md",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:AGENTS.md",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:AGENTS.md",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:docs/architecture.md",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:docs/architecture.md",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/project-context.mdc",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/project-context.mdc",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/python.mdc",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/python.mdc",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/performance.mdc",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/performance.mdc",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/review.mdc",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/review.mdc",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/kubernetes.mdc",
+   "target": "service:deploy/dual-server-deployment.yaml",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/kubernetes.mdc",
+   "target": "service:deploy/test-dual-server-deployment.yaml",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/kubernetes.mdc",
+   "target": "service:Dockerfile-prediction",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/kubernetes.mdc",
+   "target": "service:Dockerfile-training",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/kubernetes.mdc",
+   "target": "service:Dockerfile-test",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/repo-guide.md",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/repo-guide.md",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/bug-hunter.md",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/bug-hunter.md",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/perf-optimizer.md",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/perf-optimizer.md",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/pr-reviewer.md",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/pr-reviewer.md",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "documents",
+   "weight": 0.5
+  },
+  {
+   "source": "service:deploy/dual-server-deployment.yaml",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "deploys",
+   "weight": 0.7
+  },
+  {
+   "source": "service:deploy/dual-server-deployment.yaml",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "deploys",
+   "weight": 0.7
+  },
+  {
+   "source": "service:deploy/test-dual-server-deployment.yaml",
+   "target": "file:tests/test_dual_server_client.py",
+   "type": "deploys",
+   "weight": 0.7
+  },
+  {
+   "source": "pipeline:.github/workflows/ci-pr-checks.yaml",
+   "target": "service:Dockerfile-prediction",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "pipeline:.github/workflows/ci-pr-checks.yaml",
+   "target": "service:Dockerfile-training",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "pipeline:.github/workflows/ci-pr-checks.yaml",
+   "target": "service:Dockerfile-test",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "pipeline:.github/workflows/ci-release.yaml",
+   "target": "service:Dockerfile-prediction",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "pipeline:.github/workflows/ci-release.yaml",
+   "target": "service:Dockerfile-training",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "pipeline:.github/workflows/ci-release.yaml",
+   "target": "service:Dockerfile-test",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "pipeline:.github/workflows/ci-release.yaml",
+   "target": "pipeline:.github/actions/docker-build-and-push/action.yml",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "pipeline:.github/workflows/ci-release.yaml",
+   "target": "pipeline:.github/actions/trivy-scan/action.yml",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "file:Makefile",
+   "target": "service:Dockerfile-prediction",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "file:Makefile",
+   "target": "service:Dockerfile-training",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "file:Makefile",
+   "target": "service:Dockerfile-test",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "file:build-deploy.sh",
+   "target": "service:Dockerfile-prediction",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "file:build-deploy.sh",
+   "target": "service:Dockerfile-training",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "file:build-deploy.sh",
+   "target": "service:Dockerfile-test",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "file:build-deploy.sh",
+   "target": "service:deploy/dual-server-deployment.yaml",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "service:deploy/kustomization.yaml",
+   "target": "service:deploy/dual-server-deployment.yaml",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "service:deploy/kustomization.yaml",
+   "target": "service:deploy/test-dual-server-deployment.yaml",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "file:hooks/pre-commit",
+   "target": "file:Makefile",
+   "type": "depends_on",
+   "weight": 0.6
+  },
+  {
+   "source": "config:pyproject.toml",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "configures",
+   "weight": 0.6
+  },
+  {
+   "source": "config:pyproject.toml",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "configures",
+   "weight": 0.6
+  },
+  {
+   "source": "config:requirements.txt",
+   "target": "file:src/llm_d_latency_predictor/prediction_server.py",
+   "type": "configures",
+   "weight": 0.6
+  },
+  {
+   "source": "config:requirements.txt",
+   "target": "file:src/llm_d_latency_predictor/training_server.py",
+   "type": "configures",
+   "weight": 0.6
+  },
+  {
+   "source": "config:.hadolint.yaml",
+   "target": "service:Dockerfile-prediction",
+   "type": "configures",
+   "weight": 0.6
+  },
+  {
+   "source": "config:.hadolint.yaml",
+   "target": "service:Dockerfile-training",
+   "type": "configures",
+   "weight": 0.6
+  },
+  {
+   "source": "config:.hadolint.yaml",
+   "target": "service:Dockerfile-test",
+   "type": "configures",
+   "weight": 0.6
+  },
+  {
+   "source": "config:.pre-commit-config.yaml",
+   "target": "document:README.md",
+   "type": "configures",
+   "weight": 0.6
+  },
+  {
+   "source": "config:.github/ISSUE_TEMPLATE/config.yml",
+   "target": "document:.github/ISSUE_TEMPLATE/bug_report.yml",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "config:.github/ISSUE_TEMPLATE/config.yml",
+   "target": "document:.github/ISSUE_TEMPLATE/feature_request.yml",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/pr-reviewer.md",
+   "target": "document:.cursor/rules/review.mdc",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/perf-optimizer.md",
+   "target": "file:tests/test_dual_server_client.py",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/agents/bug-hunter.md",
+   "target": "document:.github/ISSUE_TEMPLATE/bug_report.yml",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:CONTRIBUTING.md",
+   "target": "document:PR_SIGNOFF.md",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:CONTRIBUTING.md",
+   "target": "document:CODE_OF_CONDUCT.md",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:CONTRIBUTING.md",
+   "target": "document:SECURITY.md",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:README.md",
+   "target": "document:docs/architecture.md",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:README.md",
+   "target": "document:CONTRIBUTING.md",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.github/PULL_REQUEST_TEMPLATE.md",
+   "target": "document:PR_SIGNOFF.md",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.github/PULL_REQUEST_TEMPLATE.md",
+   "target": "document:CONTRIBUTING.md",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "config:.github/CODEOWNERS",
+   "target": "config:OWNERS",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "pipeline:.github/workflows/prow-github.yaml",
+   "target": "config:.prowlabels.yaml",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "pipeline:.github/workflows/ci-signed-commits.yaml",
+   "target": "document:PR_SIGNOFF.md",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "pipeline:.github/workflows/unstale.yaml",
+   "target": "pipeline:.github/workflows/stale.yaml",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "config:.yamllint.yml",
+   "target": "config:.pre-commit-config.yaml",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:AGENTS.md",
+   "target": "document:docs/architecture.md",
+   "type": "related",
+   "weight": 0.5
+  },
+  {
+   "source": "document:.cursor/rules/project-context.mdc",
+   "target": "document:AGENTS.md",
+   "type": "related",
+   "weight": 0.5
+  }
+ ],
+ "layers": [
+  {
+   "id": "layer:core-services",
+   "name": "Core Services",
+   "description": "The two FastAPI servers (training :8000, prediction :8001) and their HTTP endpoints \u2014 the heart of the latency predictor.",
+   "nodeIds": [
+    "endpoint:src/llm_d_latency_predictor/prediction_server.py:/",
+    "endpoint:src/llm_d_latency_predictor/prediction_server.py:/healthz",
+    "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict",
+    "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict/bulk",
+    "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict/bulk/strict",
+    "endpoint:src/llm_d_latency_predictor/prediction_server.py:/readyz",
+    "endpoint:src/llm_d_latency_predictor/prediction_server.py:/reload",
+    "endpoint:src/llm_d_latency_predictor/prediction_server.py:/status",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/add_training_data_bulk",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/data/status",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/debug/prefix_distribution",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/flush",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/healthz",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/metrics",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/download/info",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/tpot/lgb/importances",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/tpot/lgb/txt",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/tpot/xgb/json",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/ttft/lgb/importances",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/ttft/lgb/txt",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/ttft/xgb/json",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/download",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/info",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/models/list",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/predict",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/readyz",
+    "file:src/llm_d_latency_predictor/__init__.py",
+    "file:src/llm_d_latency_predictor/prediction_server.py",
+    "file:src/llm_d_latency_predictor/training_server.py"
+   ]
+  },
+  {
+   "id": "layer:testing",
+   "name": "Testing",
+   "description": "Integration/load-test client exercising both servers over HTTP.",
+   "nodeIds": [
+    "file:tests/__init__.py",
+    "file:tests/test_dual_server_client.py"
+   ]
+  },
+  {
+   "id": "layer:deployment",
+   "name": "Deployment & Containers",
+   "description": "Kubernetes manifests, Dockerfiles, and the GKE build/deploy helper script.",
+   "nodeIds": [
+    "file:build-deploy.sh",
+    "service:Dockerfile-prediction",
+    "service:Dockerfile-test",
+    "service:Dockerfile-training",
+    "service:deploy/dual-server-deployment.yaml",
+    "service:deploy/kustomization.yaml",
+    "service:deploy/test-dual-server-deployment.yaml"
+   ]
+  },
+  {
+   "id": "layer:ci-cd",
+   "name": "CI/CD & Repo Automation",
+   "description": "GitHub Actions workflows, composite actions, Prow automation, templates, and repo governance files.",
+   "nodeIds": [
+    "config:.github/CODEOWNERS",
+    "config:.github/ISSUE_TEMPLATE/config.yml",
+    "config:.github/dependabot.yml",
+    "document:.github/ISSUE_TEMPLATE/bug_report.yml",
+    "document:.github/ISSUE_TEMPLATE/feature_request.yml",
+    "document:.github/PULL_REQUEST_TEMPLATE.md",
+    "file:hooks/pre-commit",
+    "pipeline:.github/actions/docker-build-and-push/action.yml",
+    "pipeline:.github/actions/trivy-scan/action.yml",
+    "pipeline:.github/workflows/ci-pr-checks.yaml",
+    "pipeline:.github/workflows/ci-release.yaml",
+    "pipeline:.github/workflows/ci-signed-commits.yaml",
+    "pipeline:.github/workflows/copilot-setup-steps.yaml",
+    "pipeline:.github/workflows/non-main-gatekeeper.yaml",
+    "pipeline:.github/workflows/prow-github.yaml",
+    "pipeline:.github/workflows/prow-pr-automerge.yaml",
+    "pipeline:.github/workflows/prow-pr-remove-lgtm.yaml",
+    "pipeline:.github/workflows/stale.yaml",
+    "pipeline:.github/workflows/unstale.yaml"
+   ]
+  },
+  {
+   "id": "layer:docs-knowledge",
+   "name": "Documentation & Agent Knowledge",
+   "description": "Human docs plus the AI-agent knowledge base (AGENTS.md, Cursor rules and subagents, architecture doc).",
+   "nodeIds": [
+    "config:OWNERS",
+    "document:.cursor/agents/bug-hunter.md",
+    "document:.cursor/agents/perf-optimizer.md",
+    "document:.cursor/agents/pr-reviewer.md",
+    "document:.cursor/agents/repo-guide.md",
+    "document:.cursor/rules/kubernetes.mdc",
+    "document:.cursor/rules/performance.mdc",
+    "document:.cursor/rules/project-context.mdc",
+    "document:.cursor/rules/python.mdc",
+    "document:.cursor/rules/review.mdc",
+    "document:AGENTS.md",
+    "document:CODE_OF_CONDUCT.md",
+    "document:CONTRIBUTING.md",
+    "document:PR_SIGNOFF.md",
+    "document:README.md",
+    "document:SECURITY.md",
+    "document:docs/architecture.md",
+    "document:docs/upstream-versions.md"
+   ]
+  },
+  {
+   "id": "layer:tooling",
+   "name": "Build & Tooling Config",
+   "description": "Build system, dependency, lint, and formatting configuration.",
+   "nodeIds": [
+    "config:.gitattributes",
+    "config:.gitignore",
+    "config:.hadolint.yaml",
+    "config:.pre-commit-config.yaml",
+    "config:.prowlabels.yaml",
+    "config:.yamllint.yml",
+    "config:_typos.toml",
+    "config:pyproject.toml",
+    "config:requirements.txt",
+    "file:Makefile"
+   ]
+  }
+ ],
+ "tour": [
+  {
+   "order": 1,
+   "title": "Project Orientation",
+   "description": "Start with README.md for what the project does and AGENTS.md for the working conventions, invariants, and commands.",
+   "nodeIds": [
+    "document:README.md",
+    "document:AGENTS.md"
+   ]
+  },
+  {
+   "order": 2,
+   "title": "End-to-End Architecture",
+   "description": "docs/architecture.md is ground truth: user -> Envoy -> EPP (flow control -> scheduler plugins) -> this predictor -> vLLM -> back, plus the training feedback loop, batch inference, and the llm-d plugin catalog.",
+   "nodeIds": [
+    "document:docs/architecture.md"
+   ]
+  },
+  {
+   "order": 3,
+   "title": "Training Server: Sample Ingestion",
+   "description": "The EPP posts observed TTFT/TPOT samples to /add_training_data_bulk; samples land in 400 stratified buckets keyed by (queue, kv-cache, prefix) so rare regimes are never crowded out.",
+   "nodeIds": [
+    "file:src/llm_d_latency_predictor/training_server.py",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/add_training_data_bulk"
+   ]
+  },
+  {
+   "order": 4,
+   "title": "Training Loop and Gated Ensemble",
+   "description": "A daemon thread retrains on an interval: quantile (p90) or mean objective, XGBoost/LightGBM/BayesianRidge, plus the queue-gated noqueue/queued ensemble that separates idle-pod and contended-pod latency distributions.",
+   "nodeIds": [
+    "class:src/llm_d_latency_predictor/training_server.py:LatencyPredictor",
+    "function:src/llm_d_latency_predictor/training_server.py:train",
+    "function:src/llm_d_latency_predictor/training_server.py:continuous_training_loop"
+   ]
+  },
+  {
+   "order": 5,
+   "title": "Model Publishing over HTTP",
+   "description": "Trained joblib artifacts are served via /model/{name}/info and /model/{name}/download \u2014 no shared volume needed between servers.",
+   "nodeIds": [
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/info",
+    "endpoint:src/llm_d_latency_predictor/training_server.py:/model/{model_name}/download"
+   ]
+  },
+  {
+   "order": 6,
+   "title": "Prediction Server: ModelSyncer",
+   "description": "A background thread checks the training server every 10s, streams newer models to temp files, validates them with joblib.load, and atomically replaces the local copies.",
+   "nodeIds": [
+    "file:src/llm_d_latency_predictor/prediction_server.py",
+    "class:src/llm_d_latency_predictor/prediction_server.py:ModelSyncer"
+   ]
+  },
+  {
+   "order": 7,
+   "title": "The Prediction Hot Path",
+   "description": "/predict/bulk/strict is on the EPP scheduling critical path: numpy fast path, lock held only for model-pointer snapshots, per-regime ensemble batching, ORJSON responses.",
+   "nodeIds": [
+    "class:src/llm_d_latency_predictor/prediction_server.py:LightweightPredictor",
+    "function:src/llm_d_latency_predictor/prediction_server.py:predict_batch_fast",
+    "endpoint:src/llm_d_latency_predictor/prediction_server.py:/predict/bulk/strict"
+   ]
+  },
+  {
+   "order": 8,
+   "title": "The Feature-Parity Invariant",
+   "description": "Feature engineering is duplicated in both servers and must stay identical \u2014 column names, order, dtypes, categories. Drift silently corrupts predictions.",
+   "nodeIds": [
+    "function:src/llm_d_latency_predictor/training_server.py:_prepare_features_with_interaction",
+    "function:src/llm_d_latency_predictor/prediction_server.py:_prepare_features_with_interaction"
+   ]
+  },
+  {
+   "order": 9,
+   "title": "Integration Test Client",
+   "description": "tests/test_dual_server_client.py exercises both servers over HTTP: readiness, single + bulk predictions, training ingestion, model sync, and load testing. Tests skip when servers are unreachable.",
+   "nodeIds": [
+    "file:tests/test_dual_server_client.py"
+   ]
+  },
+  {
+   "order": 10,
+   "title": "Deployment Topology",
+   "description": "Dual-server topology: one training Deployment with a ReadWriteOnce PVC, N prediction replicas with per-pod emptyDir caches; models move over HTTP only. Also ships as EPP sidecars upstream.",
+   "nodeIds": [
+    "service:deploy/dual-server-deployment.yaml",
+    "service:Dockerfile-prediction",
+    "service:Dockerfile-training"
+   ]
+  },
+  {
+   "order": 11,
+   "title": "CI/CD Pipelines",
+   "description": "PR checks run ruff and container builds; releases build/push images with Trivy scanning; Prow automation handles LGTM/automerge; DCO sign-off is enforced.",
+   "nodeIds": [
+    "pipeline:.github/workflows/ci-pr-checks.yaml",
+    "pipeline:.github/workflows/ci-release.yaml"
+   ]
+  },
+  {
+   "order": 12,
+   "title": "The AI Agent Knowledge Base",
+   "description": "Cursor rules give scoped conventions; four read-only subagents (repo-guide, bug-hunter, perf-optimizer, pr-reviewer) answer questions, draft issues, propose optimizations, and review PRs \u2014 never committing or filing anything without permission.",
+   "nodeIds": [
+    "document:.cursor/agents/repo-guide.md",
+    "document:.cursor/agents/bug-hunter.md",
+    "document:.cursor/agents/perf-optimizer.md",
+    "document:.cursor/agents/pr-reviewer.md",
+    "document:.cursor/rules/project-context.mdc"
+   ]
+  }
+ ]
+}
