@@ -26,6 +26,35 @@ def _model_factory():
 
 
 class TestTopologyCorrectionTable:
+    def test_correction_for_empty_string_is_always_zero(self):
+        """The wire default is "" (not None) -- see fit()'s docstring for why:
+        a None/NaN field gets silently dropped by a raw .dropna() on the
+        training row before feature selection, wiping every existing caller's
+        training data. "" survives .dropna() and must behave identically to
+        None here."""
+        table = TopologyCorrectionTable(quantile_alpha=0.9)
+        table.corrections = {"zone": 42.0, "region": -13.0}
+        assert table.correction_for("") == 0.0
+
+    def test_empty_string_labels_are_not_fit_as_a_real_class(self):
+        """A mix of real classes and "" (absent) must never produce a
+        correction keyed on "" -- that would silently apply a bogus
+        correction to every request that has no topology info at all."""
+        rng = np.random.RandomState(3)
+        n = 1000
+        x = rng.uniform(0, 10, n)
+        # half the rows have a real class, half are "" (e.g. monolithic/decode
+        # requests that never go through topology-aware scoring)
+        topo = np.array(["zone"] * (n // 2) + [""] * (n // 2))
+        y = 100 + 5 * x + rng.normal(0, 2, n)
+
+        table = TopologyCorrectionTable(quantile_alpha=0.9, min_samples_per_class=30)
+        table.fit(pd.DataFrame({"x": x}), pd.Series(y), pd.Series(topo), model_factory=_model_factory)
+
+        assert "" not in table.corrections
+        assert "" not in table.skipped_classes
+        assert table.correction_for("") == 0.0
+
     def test_correction_for_none_is_always_zero(self):
         table = TopologyCorrectionTable(quantile_alpha=0.9)
         table.corrections = {"zone": 42.0, "region": -13.0}
@@ -130,3 +159,58 @@ class TestTopologyCorrectionTable:
                 pd.Series(["zone", "zone", "zone"]),
                 model_factory=_model_factory,
             )
+
+
+class TestTopologyDistanceWireDefaultIsDropnaSafe:
+    """Regression test for a real bug caught in this session: training_server.py's
+    train() builds `pd.DataFrame(clean_ttft).dropna()` on the FULL raw row -- every
+    column, not just the features actually used -- before any column selection.
+    pandas treats None as NaN once it's in a DataFrame, and .dropna() defaults to
+    dropping a row if ANY column is NaN. A field defaulting to None therefore
+    silently discards every row from every caller that doesn't send it -- which,
+    for a brand new optional field, is every existing caller, 100% of the time.
+    This is exactly why the wire default must be "" (survives .dropna()), not
+    None (does not), matching pod_type's existing convention.
+    """
+
+    def test_default_value_survives_dropna_like_pod_type(self):
+        # Simulates exactly what train() does: build a DataFrame from raw
+        # TrainingEntry-shaped dicts, call .dropna() on the whole thing.
+        rows = [
+            {
+                "kv_cache_percentage": 0.1,
+                "input_token_length": 100,
+                "num_request_waiting": 0,
+                "num_request_running": 1,
+                "actual_ttft_ms": 50.0,
+                "prefix_cache_score": 0.0,
+                "pod_type": "",  # existing field, known-safe default
+                "topology_distance": "",  # this field -- must behave the same way
+            }
+            for _ in range(10)
+        ]
+        df = pd.DataFrame(rows).dropna()
+        assert len(df) == 10, (
+            "all rows must survive .dropna() when topology_distance uses its "
+            "documented default -- if this fails, the default was changed back "
+            "to None and will silently wipe out all training data in production"
+        )
+
+    def test_none_default_would_have_broken_this(self):
+        """Documents the actual failure mode this test suite guards against --
+        this is what the bug looked like before the fix, kept as a permanent
+        regression guard against reintroducing it."""
+        rows = [
+            {
+                "kv_cache_percentage": 0.1,
+                "input_token_length": 100,
+                "actual_ttft_ms": 50.0,
+                "topology_distance": None,  # the original, broken default
+            }
+            for _ in range(10)
+        ]
+        df = pd.DataFrame(rows).dropna()
+        assert len(df) == 0, (
+            "sanity check on the test itself: confirms None really does get "
+            "wiped by a blanket .dropna(), i.e. that this was a real bug"
+        )

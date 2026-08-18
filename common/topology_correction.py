@@ -107,7 +107,14 @@ class TopologyCorrectionTable:
         oof_residual = target_reset.to_numpy() - oof_pred
         labels_reset = topology_labels.reset_index(drop=True)
 
-        for cls in labels_reset.dropna().unique():
+        # "" and NaN both mean "no topology known" -- never a real class to correct.
+        # This matches the field's wire default (empty string, not None/NaN) chosen
+        # specifically so an absent field doesn't get dropped by a raw .dropna() on
+        # the training row before feature selection.
+        known_labels = labels_reset.dropna()
+        known_labels = known_labels[known_labels != ""]
+
+        for cls in known_labels.unique():
             mask = (labels_reset == cls).to_numpy()
             n_class = int(mask.sum())
             if n_class < self.min_samples_per_class:
@@ -122,9 +129,12 @@ class TopologyCorrectionTable:
 
         Absent or unrecognized topology_class must never raise -- every
         existing caller that does not send this field relies on this method
-        being a pure no-op.
+        being a pure no-op. Both None and "" mean absent: the wire format uses
+        "" (see fit()'s docstring for why), but None is also accepted so this
+        method is safe to call from any code path regardless of which absent
+        representation it happens to be using.
         """
-        if topology_class is None:
+        if topology_class is None or topology_class == "":
             return 0.0
         return self.corrections.get(topology_class, 0.0)
 

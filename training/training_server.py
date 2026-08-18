@@ -1131,7 +1131,7 @@ class LatencyPredictor:
                         settings.ENABLE_TOPOLOGY_CORRECTION
                         and self.model_type == ModelType.XGBOOST
                         and "topology_distance" in raw_ttft.columns
-                        and raw_ttft["topology_distance"].notna().any()
+                        and (raw_ttft["topology_distance"].fillna("") != "").any()
                     ):
                         try:
                             fitted_params = new_ttft_model.get_params()
@@ -1866,7 +1866,8 @@ class TrainingEntry(BaseModel):
     encoder_matched_size: int = Field(default=0, ge=0, description="Encoder cache matched size (multimodal)")
     encoder_input_size: int = Field(default=0, ge=0, description="Encoder input size (multimodal)")
     topology_distance: str | None = Field(
-        default=None, description="P/D pair topology distance: 'host', 'rack', 'zone', 'region', or None if unknown"
+        default="",
+        description="P/D pair topology distance: 'host', 'rack', 'zone', 'region', or empty string if unknown",
     )
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -1882,7 +1883,8 @@ class PredictionRequest(BaseModel):
     encoder_matched_size: int = Field(default=0, ge=0, description="Encoder cache matched size (multimodal)")
     encoder_input_size: int = Field(default=0, ge=0, description="Encoder input size (multimodal)")
     topology_distance: str | None = Field(
-        default=None, description="P/D pair topology distance: 'host', 'rack', 'zone', 'region', or None if unknown"
+        default="",
+        description="P/D pair topology distance: 'host', 'rack', 'zone', 'region', or empty string if unknown",
     )
 
 

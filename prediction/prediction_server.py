@@ -937,7 +937,8 @@ class PredictionRequest(BaseModel):
     encoder_matched_size: int = Field(default=0, ge=0, description="Encoder cache matched size (multimodal)")
     encoder_input_size: int = Field(default=0, ge=0, description="Encoder input size (multimodal)")
     topology_distance: str | None = Field(
-        default=None, description="P/D pair topology distance: 'host', 'rack', 'zone', 'region', or None if unknown"
+        default="",
+        description="P/D pair topology distance: 'host', 'rack', 'zone', 'region', or empty string if unknown",
     )
 
 
