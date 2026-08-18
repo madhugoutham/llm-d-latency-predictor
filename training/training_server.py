@@ -53,12 +53,14 @@ except (ImportError, OSError) as e:
     lgb = None
     logging.warning("LightGBM not available: %s. Please install with: pip install lightgbm", e)
 
+from common.topology_correction import TopologyCorrectionTable
 from common.types import ModelType, ObjectiveType, QueueGatedModel, RandomDropDeque
 
 
 @staticmethod
 def _drop_timestamp(rows: list[dict]) -> list[dict]:
     return [{k: v for k, v in row.items() if k != "timestamp"} for row in rows]
+
 
 # --- Configuration ---
 class Settings:
@@ -98,6 +100,19 @@ class Settings:
     # Gated ensemble model paths (each wraps noqueue + queued sub-models)
     TTFT_GATED_MODEL_PATH: str = os.getenv("LATENCY_TTFT_GATED_MODEL_PATH", "/tmp/models/ttft_gated.joblib")
     TPOT_GATED_MODEL_PATH: str = os.getenv("LATENCY_TPOT_GATED_MODEL_PATH", "/tmp/models/tpot_gated.joblib")
+
+    # Per-topology-class residual correction (see common/topology_correction.py).
+    # Off by default: measured neutral-to-harmful on a single-region, uniform-fabric
+    # cluster (predictor issue #30) -- do not enable without validating on the
+    # target cluster first. Absent topology_distance on a request is always a
+    # correction of 0.0 (no-op), regardless of this flag.
+    ENABLE_TOPOLOGY_CORRECTION: bool = os.getenv("LATENCY_ENABLE_TOPOLOGY_CORRECTION", "false").lower() == "true"
+    TOPOLOGY_CORRECTION_PATH: str = os.getenv(
+        "LATENCY_TOPOLOGY_CORRECTION_PATH", "/tmp/models/topology_correction.joblib"
+    )
+    TOPOLOGY_CORRECTION_MIN_SAMPLES_PER_CLASS: int = int(
+        os.getenv("LATENCY_TOPOLOGY_CORRECTION_MIN_SAMPLES_PER_CLASS", "30")
+    )
 
 
 settings = Settings()
@@ -209,6 +224,7 @@ def _get_model_paths():
         "tpot_scaler": settings.TPOT_SCALER_PATH,
         "ttft_gated": settings.TTFT_GATED_MODEL_PATH,
         "tpot_gated": settings.TPOT_GATED_MODEL_PATH,
+        "topology_correction": settings.TOPOLOGY_CORRECTION_PATH,
     }
 
 
@@ -295,6 +311,15 @@ class LatencyPredictor:
         self.last_retrain_time = None
         self._shutdown_event = threading.Event()
         self._training_thread: threading.Thread = None
+
+        # Per-topology-class residual correction for TTFT (see common/topology_correction.py).
+        # Populated during train() only when settings.ENABLE_TOPOLOGY_CORRECTION is set and
+        # the training data has a topology_distance column; empty otherwise, in which case
+        # TopologyCorrectionTable.correction_for() returns 0.0 (no-op) for every class.
+        self.topology_correction = TopologyCorrectionTable(
+            quantile_alpha=self.quantile,
+            min_samples_per_class=settings.TOPOLOGY_CORRECTION_MIN_SAMPLES_PER_CLASS,
+        )
 
     def _get_prefix_bucket(self, prefix_score: float) -> int:
         """Map prefix cache score to bucket index."""
@@ -1097,6 +1122,33 @@ class LatencyPredictor:
                             new_ttft_model, new_ttft_scaler, ttft_features, "TTFT"
                         )
 
+                    # Topology residual correction. Scoped to XGBoost only -- the only
+                    # model type this was validated against (predictor issue #30); the
+                    # feature is off by default (settings.ENABLE_TOPOLOGY_CORRECTION),
+                    # so this block is a no-op unless explicitly enabled and validated
+                    # on the target cluster first.
+                    if (
+                        settings.ENABLE_TOPOLOGY_CORRECTION
+                        and self.model_type == ModelType.XGBOOST
+                        and "topology_distance" in raw_ttft.columns
+                        and (raw_ttft["topology_distance"].fillna("") != "").any()
+                    ):
+                        try:
+                            fitted_params = new_ttft_model.get_params()
+                            self.topology_correction.fit(
+                                features=X_ttft,
+                                target=raw_ttft["actual_ttft_ms"],
+                                topology_labels=raw_ttft["topology_distance"],
+                                model_factory=lambda: xgb.XGBRegressor(**fitted_params),
+                            )
+                            logging.info(
+                                "Topology correction fit: %d classes corrected, %d skipped (too few samples)",
+                                len(self.topology_correction.corrections),
+                                len(self.topology_correction.skipped_classes),
+                            )
+                        except Exception:
+                            logging.error("Error fitting topology correction table", exc_info=True)
+
                 if new_tpot_model:
                     self.tpot_model = new_tpot_model
                     if new_tpot_scaler is not None:
@@ -1307,6 +1359,11 @@ class LatencyPredictor:
                 joblib.dump(self.ttft_model, settings.TTFT_MODEL_PATH)
                 logging.info("TTFT model saved.")
 
+                if settings.ENABLE_TOPOLOGY_CORRECTION and self.topology_correction.corrections:
+                    os.makedirs(os.path.dirname(settings.TOPOLOGY_CORRECTION_PATH), exist_ok=True)
+                    joblib.dump(self.topology_correction.to_dict(), settings.TOPOLOGY_CORRECTION_PATH)
+                    logging.info("Topology correction table saved.")
+
                 # Save model-specific exports
                 if self.model_type == ModelType.XGBOOST:
                     try:
@@ -1482,6 +1539,14 @@ class LatencyPredictor:
                     self.ttft_model = joblib.load(settings.TTFT_MODEL_PATH)
                     if self.model_type == ModelType.BAYESIAN_RIDGE and os.path.exists(settings.TTFT_SCALER_PATH):
                         self.ttft_scaler = joblib.load(settings.TTFT_SCALER_PATH)
+                    if settings.ENABLE_TOPOLOGY_CORRECTION and os.path.exists(settings.TOPOLOGY_CORRECTION_PATH):
+                        try:
+                            self.topology_correction = TopologyCorrectionTable.from_dict(
+                                joblib.load(settings.TOPOLOGY_CORRECTION_PATH)
+                            )
+                            logging.info("Topology correction table loaded.")
+                        except Exception:
+                            logging.error("Error loading topology correction table", exc_info=True)
                     meta_path = os.path.join(os.path.dirname(settings.TTFT_MODEL_PATH), "metadata.json")
                     if os.path.exists(meta_path):
                         try:
@@ -1800,6 +1865,10 @@ class TrainingEntry(BaseModel):
     decode_tokens_in_flight: int = Field(default=0, ge=0)
     encoder_matched_size: int = Field(default=0, ge=0, description="Encoder cache matched size (multimodal)")
     encoder_input_size: int = Field(default=0, ge=0, description="Encoder input size (multimodal)")
+    topology_distance: str | None = Field(
+        default="",
+        description="P/D pair topology distance: 'host', 'rack', 'zone', 'region', or empty string if unknown",
+    )
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -1813,6 +1882,10 @@ class PredictionRequest(BaseModel):
     pod_type: str | None = Field(default="", description="Pod type: 'prefill', 'decode', or '' for monolithic")
     encoder_matched_size: int = Field(default=0, ge=0, description="Encoder cache matched size (multimodal)")
     encoder_input_size: int = Field(default=0, ge=0, description="Encoder input size (multimodal)")
+    topology_distance: str | None = Field(
+        default="",
+        description="P/D pair topology distance: 'host', 'rack', 'zone', 'region', or empty string if unknown",
+    )
 
 
 class PredictionResponse(BaseModel):
@@ -1930,7 +2003,16 @@ def export_models():
     # loads them, but the prediction server syncs them on file existence and
     # would then dispatch all traffic through the source deployment's frozen
     # gate, masking local base-model retraining until ensemble_active flips.
-    paths = {name: path for name, path in _get_model_paths().items() if name not in ("ttft_gated", "tpot_gated")}
+    #
+    # Exclude topology_correction too: it is fit from the SOURCE cluster's own
+    # topology mix (rack/zone layout, fabric speed), which a freshly-scaled
+    # replica on the same cluster will re-derive on its own next retrain --
+    # seeding a stale or foreign cluster's corrections risks misapplying them.
+    paths = {
+        name: path
+        for name, path in _get_model_paths().items()
+        if name not in ("ttft_gated", "tpot_gated", "topology_correction")
+    }
 
     with predictor.lock:
         snapshots = {}

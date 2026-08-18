@@ -59,6 +59,7 @@ except (ImportError, OSError) as e:
     LIGHTGBM_AVAILABLE = False
     logging.warning("LightGBM not available: %s. Install with: pip install lightgbm", e)
 
+from common.topology_correction import TopologyCorrectionTable
 from common.types import ModelType, ObjectiveType, QueueGatedModel
 
 
@@ -97,6 +98,16 @@ class PredictSettings:
     # Gated ensemble model paths (each wraps noqueue + queued sub-models)
     LOCAL_TTFT_GATED_MODEL_PATH: str = os.getenv("LOCAL_TTFT_GATED_MODEL_PATH", "/local_models/ttft_gated.joblib")
     LOCAL_TPOT_GATED_MODEL_PATH: str = os.getenv("LOCAL_TPOT_GATED_MODEL_PATH", "/local_models/tpot_gated.joblib")
+
+    # Per-topology-class residual correction (see common/topology_correction.py and
+    # training/training_server.py). Off by default -- must match the training
+    # server's setting, since it gates whether this predictor even attempts to
+    # sync/load the correction table. Absent topology_distance on a request, or
+    # this flag off, is always a correction of 0.0 (no-op).
+    ENABLE_TOPOLOGY_CORRECTION: bool = os.getenv("LATENCY_ENABLE_TOPOLOGY_CORRECTION", "false").lower() == "true"
+    LOCAL_TOPOLOGY_CORRECTION_PATH: str = os.getenv(
+        "LOCAL_TOPOLOGY_CORRECTION_PATH", "/local_models/topology_correction.joblib"
+    )
 
 
 settings = PredictSettings()
@@ -256,6 +267,8 @@ class ModelSyncer:
                     ("ttft_gated", settings.LOCAL_TTFT_GATED_MODEL_PATH),
                     ("tpot_gated", settings.LOCAL_TPOT_GATED_MODEL_PATH),
                 ]
+            if settings.ENABLE_TOPOLOGY_CORRECTION:
+                to_sync += [("topology_correction", settings.LOCAL_TOPOLOGY_CORRECTION_PATH)]
             for name, path in to_sync:
                 if self._download_model_if_newer(name, path):
                     updated = True
@@ -325,6 +338,9 @@ class LightweightPredictor:
         self.last_load: datetime | None = None
         # Track checksums to avoid redundant reloads
         self._loaded_checksums: dict = {}
+        # Per-topology-class TTFT correction, synced from the training server.
+        # Empty dict is a permanent no-op — see TopologyCorrectionTable.correction_for().
+        self.topology_correction = TopologyCorrectionTable(quantile_alpha=self.quantile)
         logging.info(f"Predictor type: {self.model_type}, objective: {self.objective_type}, quantile: {self.quantile}")
 
     @property
@@ -487,6 +503,14 @@ class LightweightPredictor:
                 self._loaded_checksums = all_checksums
                 self.last_load = datetime.now(UTC)
 
+            if settings.ENABLE_TOPOLOGY_CORRECTION and os.path.exists(settings.LOCAL_TOPOLOGY_CORRECTION_PATH):
+                try:
+                    loaded = TopologyCorrectionTable.from_dict(joblib.load(settings.LOCAL_TOPOLOGY_CORRECTION_PATH))
+                    with self.lock:
+                        self.topology_correction = loaded
+                except Exception:
+                    logging.error("Failed to load topology correction table, keeping previous", exc_info=True)
+
             logging.info(f"Models loaded (PID={os.getpid()}, ensemble_active={self.ensemble_active})")
             return True
 
@@ -615,7 +639,12 @@ class LightweightPredictor:
             ttft_preds, tpot_preds = self._predict_with_models(
                 df_ttft, df_tpot, ttft_model, tpot_model, ttft_scaler, tpot_scaler
             )
-            return ttft_preds[0], tpot_preds[0]
+            # Topology correction applies to TTFT only -- transfer between prefill and
+            # decode pods affects time-to-first-token, not the per-token decode loop.
+            # correction_for() is 0.0 (exact no-op) whenever topology_distance is absent
+            # or unrecognized, so this is always safe to call unconditionally.
+            ttft_corrected = ttft_preds[0] + self.topology_correction.correction_for(features.get("topology_distance"))
+            return ttft_corrected, tpot_preds[0]
 
         except ValueError as ve:
             logging.warning(f"Client error in predict(): {ve}")
@@ -907,6 +936,10 @@ class PredictionRequest(BaseModel):
     decode_tokens_in_flight: int = Field(default=0, ge=0)
     encoder_matched_size: int = Field(default=0, ge=0, description="Encoder cache matched size (multimodal)")
     encoder_input_size: int = Field(default=0, ge=0, description="Encoder input size (multimodal)")
+    topology_distance: str | None = Field(
+        default="",
+        description="P/D pair topology distance: 'host', 'rack', 'zone', 'region', or empty string if unknown",
+    )
 
 
 class PredictionResponse(BaseModel):
