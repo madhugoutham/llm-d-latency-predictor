@@ -1,0 +1,13 @@
+# --- Training server ConfigMap ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: latency-predictor-config
+data:
+  LATENCY_RETRAINING_INTERVAL_SEC: "1"
+  LATENCY_MIN_SAMPLES_FOR_RETRAIN: "100"
+  LATENCY_TTFT_MODEL_PATH: "/models/ttft.joblib"
+  LATENCY_TPOT_MODEL_PATH: "/models/tpot.joblib"
+  LATENCY_TTFT_SCALER_PATH: "/models/ttft_scaler.joblib"
+  LATENCY_TPOT_SCALER_PATH: "/models/tpot_scaler.joblib"
+  LATENCY_MODEL_TYPE: "xgboost"

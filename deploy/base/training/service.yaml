@@ -1,0 +1,17 @@
+# --- Training Service (internal) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: training-service
+  labels:
+    component: training
+spec:
+  type: ClusterIP
+  selector:
+    app: training-server
+    component: training
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
+      name: training

@@ -1,0 +1,64 @@
+# --- Prediction Server Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prediction-server-deployment
+  labels:
+    app: prediction-server
+    component: prediction
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: prediction-server
+      component: prediction
+  template:
+    metadata:
+      labels:
+        app: prediction-server
+        component: prediction
+    spec:
+      containers:
+        - name: prediction-server
+          image: placeholder-for-prediction-server-image
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8001
+              name: predict-port
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 10  # Allow more failures while downloading models
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          envFrom:
+            - configMapRef:
+                name: prediction-server-config
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SERVER_TYPE
+              value: "prediction"
+          volumeMounts:
+            # Only local storage needed - no shared volumes!
+            - name: local-model-storage
+              mountPath: /local_models
+      volumes:
+        - name: local-model-storage
+          emptyDir: {}  # Each pod gets its own local storage

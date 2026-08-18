@@ -1,0 +1,12 @@
+# --- Persistent Volume Claim for the trained models ---
+# Requests persistent storage for the models using the custom StorageClass.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: training-models-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce  # Sufficient since only the leader pod writes to the volume.
+  resources:
+    requests:
+      storage: 100Gi

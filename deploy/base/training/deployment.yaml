@@ -1,0 +1,62 @@
+# --- Training Server Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: training-server-deployment
+  labels:
+    app: training-server
+    component: training
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: training-server
+      component: training
+  template:
+    metadata:
+      labels:
+        app: training-server
+        component: training
+    spec:
+      containers:
+        - name: training-server
+          image: placeholder-for-training-server-image
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: training-port
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 45
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "2Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+          envFrom:
+            - configMapRef:
+                name: latency-predictor-config
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: SERVER_TYPE
+              value: "training"
+          volumeMounts:
+            - name: model-storage
+              mountPath: /models
+      volumes:
+        - name: model-storage
+          emptyDir: {}

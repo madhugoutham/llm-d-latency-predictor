@@ -1,0 +1,17 @@
+# --- Prediction Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prediction-service
+  labels:
+    component: prediction
+spec:
+  type: ClusterIP
+  selector:
+    app: prediction-server
+    component: prediction
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8001
+      name: prediction

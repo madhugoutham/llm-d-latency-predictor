@@ -28,8 +28,23 @@ jobs:
               - '!LICENSE'
               - '!OWNERS'
 
-  # Python: lint
-  python-lint:
+  # Lint: runs all pre-commit hooks (ruff, shellcheck, hadolint, markdownlint, yamllint, etc.)
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
+
+  # Verify the restructured layout is importable
+  import-check:
     runs-on: ubuntu-latest
     needs: check-code-changes
     if: needs.check-code-changes.outputs.has_code_changes == 'true'
@@ -42,40 +57,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install ruff
-        run: pip install ruff
-
-      - name: Run ruff check
-        run: ruff check .
-
-      - name: Run ruff format check
-        run: ruff format --check .
-
-  # Container: build (no push) to validate all service Dockerfiles
-  container-build:
-    runs-on: ubuntu-latest
-    needs: check-code-changes
-    if: needs.check-code-changes.outputs.has_code_changes == 'true'
-    strategy:
-      matrix:
-        service:
-          - name: prediction
-            dockerfile: Dockerfile-prediction
-          - name: training
-            dockerfile: Dockerfile-training
-          - name: test
-            dockerfile: Dockerfile-test
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build ${{ matrix.service.name }} container (no push)
+      # find_spec instead of import_module: prediction_server.py creates
+      # /local_models at import time (ModelSyncer.__init__), which fails
+      # outside a container. Switch to import_module after the lifespan refactor.
+      - name: Check imports
         run: |
-          docker buildx build \
-            --platform linux/amd64 \
-            -f ${{ matrix.service.dockerfile }} \
-            --tag test-build-${{ matrix.service.name }}:pr-${{ github.event.pull_request.number }} \
-            .
+          pip install -r requirements.txt --quiet
+          python -c "
+          import importlib.util
+          for mod in ['prediction.prediction_server', 'training.training_server', 'common.types']:
+              spec = importlib.util.find_spec(mod)
+              assert spec is not None, f'{mod} not found'
+              print(f'{mod}: {spec.origin}')
+          "

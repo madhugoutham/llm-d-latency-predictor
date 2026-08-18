@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Namespace is configurable here (or override it in an overlay).
+namespace: default
+
+# namePrefix / nameSuffix are configurable per overlay. If you enable a prefix,
+# remember to update TRAINING_SERVER_URL in the prediction ConfigMap to match.
+# namePrefix: ""
+
+resources:
+  - training
+  - prediction
+  - test
+
+# Common labels applied to all resources
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: latency-predictor
