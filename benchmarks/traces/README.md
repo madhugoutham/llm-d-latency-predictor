@@ -47,13 +47,14 @@ Optional fields (zero-filled when absent):
 
 ## When to capture a new trace
 
-Three reference traces are included, covering different workload patterns:
+Four reference traces are included, covering different workload patterns:
 
 | Trace | Prompt length | Contention | Samples | Covers |
 |-------|--------------|------------|---------|--------|
 | `sharegpt-h200` | short (median 165) | moderate (median 12) | 3,400 | Real conversations, moderate load |
 | `chatbot-synthetic-h200` | long (median 6,497) | extreme (median 93) | 3,060 | Long prompts, stress testing |
 | `bimodal-h200` | mixed (median 3,411) | extreme (median 116) | 3,400 | Mixed short+long, stress testing |
+| `kermit-pd-topology-h200` | mixed (median 1,942) | high (median 11) | 1,500 | **Only trace with real P/D disaggregation** — `pod_type` and topology fields (`topology_distance`, `topology_affinity_score`) populated; the other three are monolithic-only |
 
 Capture a new trace when testing features that depend on:
 

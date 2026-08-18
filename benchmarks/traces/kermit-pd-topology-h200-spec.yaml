@@ -1,0 +1,38 @@
+workload:
+  name: kermit-pd-topology-h200
+  trace_type: real
+  data_source: ShareGPT + long synthetic + shared-prefix (combined)
+  model: Qwen/Qwen3-32B
+  hardware:
+    gpu: NVIDIA H200 (141GB)
+    gpus_per_replica: 1
+    platform: CoreWeave CKS (Kermit), Kubernetes
+    topology: single-region (US-EAST-01), uniform InfiniBand fabric
+  serving:
+    stack: llm-d-router EPP (topology-extractor, topology-affinity-filter/scorer,
+      predicted-latency-producer) + vLLM P/D disaggregated (NixlConnector, kv_both)
+    epp_plugins: topology-extractor, topology-affinity-filter, topology-affinity-scorer,
+      predicted-latency-producer, prefix-cache-scorer, queue-scorer
+    max_model_len: 8192
+    prefix_caching: enabled
+  load:
+    generator: inference-perf
+    profile: ShareGPT + long-synthetic (2k-8k tokens) + shared-prefix
+    api: completion (streaming)
+    stages:
+      - {rate_qps: 1, duration_s: 300}
+      - {rate_qps: 2, duration_s: 300}
+      - {rate_qps: 4, duration_s: 600}
+  analysis:
+    seeds: 10
+    split: 90/10 train/test per seed
+    contention_gate_min_pct: 20
+  known_limitations:
+    - single-region, uniform InfiniBand fabric — no genuine cross-region/TCP-fallback
+      pairs exist in this trace; only host/rack-level distance was observed
+    - topology_distance "host" stratum shows 0 samples despite the router's
+      topology-affinity-scorer always selecting a same-host prefill candidate when
+      one was available — unresolved observability discrepancy, see llm-d-router PR
+    - this file is a stratified downsample (1,500 of 16,186 real entries) to stay
+      under the repo's 1MB trace-file limit; full trace available on request
+    - prefix_cache_score is near-zero for 99.7% of samples
