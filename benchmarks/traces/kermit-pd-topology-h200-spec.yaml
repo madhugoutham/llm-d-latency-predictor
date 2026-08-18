@@ -23,13 +23,21 @@ workload:
       - {rate_qps: 1, duration_s: 300}
       - {rate_qps: 2, duration_s: 300}
       - {rate_qps: 4, duration_s: 600}
-  analysis:
+  topology_finding:
+    # Evaluated topology_distance as a raw XGBoost feature via
+    # benchmarks/offline_feature_ab.py (ordinal hop-distance encoding). Result:
+    # no distinguishable signal — the improvement is within seed noise and the
+    # tool's self-test cannot separate it from overfitting gain. Only zone and
+    # region tiers appear here and they transfer at near-identical speed, so
+    # distance carries little latency signal on this fabric. No A/B artifact is
+    # shipped; the consuming approach is per-class residual correction, not a raw
+    # feature (see llm-d-latency-predictor PR #3 and predictor issue #30).
+    verdict: neutral
     seeds: 10
     split: 90/10 train/test per seed
-    contention_gate_min_pct: 20
   known_limitations:
-    - single-region, uniform InfiniBand fabric — no genuine cross-region/TCP-fallback
-      pairs exist in this trace; only host/rack-level distance was observed
+    - single-region, uniform InfiniBand fabric — only zone- and region-level
+      distance observed (no host, rack, or cross-region pairs)
     - topology_distance "host" stratum shows 0 samples despite the router's
       topology-affinity-scorer always selecting a same-host prefill candidate when
       one was available — unresolved observability discrepancy, see llm-d-router PR
